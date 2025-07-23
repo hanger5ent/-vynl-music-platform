@@ -26,26 +26,28 @@ export function Sidebar({ userType }: SidebarProps) {
   const { data: session } = useSession()
 
   const fanNavigation = [
-    { name: 'Dashboard', href: '/fan', icon: HomeIcon },
-    { name: 'Liked Songs', href: '/fan/liked', icon: HeartIcon },
-    { name: 'Community', href: '/fan/community', icon: UsersIcon },
-    { name: 'Social Feed', href: '/fan/feed', icon: ChatBubbleLeftEllipsisIcon },
+    { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
+    { name: 'Discover', href: '/discover', icon: MusicalNoteIcon },
+    { name: 'My Library', href: '/library', icon: HeartIcon },
+    { name: 'Playlists', href: '/playlists', icon: UsersIcon },
+    { name: 'Following', href: '/following', icon: UsersIcon },
+    { name: 'Purchases', href: '/purchases', icon: ShoppingBagIcon },
     { name: 'Events', href: '/fan/events', icon: CalendarDaysIcon },
-    { name: 'Store', href: '/fan/store', icon: ShoppingBagIcon },
-    { name: 'Artist Support', href: '/fan/support', icon: CurrencyDollarIcon },
-    { name: 'Subscription', href: '/fan/subscription', icon: StarIcon },
+    { name: 'Community', href: '/fan/community', icon: ChatBubbleLeftEllipsisIcon },
+    { name: 'Settings', href: '/settings', icon: CogIcon },
   ]
 
   const creatorNavigation = [
-    { name: 'Dashboard', href: '/creator', icon: HomeIcon },
-    { name: 'Liked Songs', href: '/creator/liked', icon: HeartIcon },
-    { name: 'Community', href: '/creator/community', icon: UsersIcon },
-    { name: 'Social Feed', href: '/creator/feed', icon: ChatBubbleLeftEllipsisIcon },
-    { name: 'Events', href: '/creator/events', icon: CalendarDaysIcon },
-    { name: 'Store', href: '/creator/store', icon: ShoppingBagIcon },
-    { name: 'Artist Support', href: '/creator/support', icon: CurrencyDollarIcon },
+    { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
+    { name: 'Discover', href: '/discover', icon: MusicalNoteIcon },
+    { name: 'My Library', href: '/library', icon: HeartIcon },
+    { name: 'Playlists', href: '/playlists', icon: UsersIcon },
+    { name: 'Following', href: '/following', icon: UsersIcon },
+    { name: 'Purchases', href: '/purchases', icon: ShoppingBagIcon },
     { name: 'Creator Studio', href: '/creator/studio', icon: PlusCircleIcon },
-    { name: 'Royalties', href: '/creator/royalties', icon: MusicalNoteIcon },
+    { name: 'Shop', href: '/creator/shop', icon: ShoppingBagIcon },
+    { name: 'Royalties', href: '/creator/royalties', icon: CurrencyDollarIcon },
+    { name: 'Settings', href: '/settings', icon: CogIcon },
   ]
 
   const adminNavigation = [

@@ -16,7 +16,10 @@ import {
   Users,
   Star,
   ChevronRight,
-  Sparkles
+  Sparkles,
+  UserPlus,
+  Plus,
+  ShoppingCart
 } from 'lucide-react'
 
 interface Track {
