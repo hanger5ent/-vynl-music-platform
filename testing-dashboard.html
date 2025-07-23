@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VYNL Testing Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 2.5rem;
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 40px;
+        }
+        
+        .test-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+        
+        .test-card {
+            background: #f8fafc;
+            border: 2px solid #e2e8f0;
+            border-radius: 15px;
+            padding: 25px;
+            transition: all 0.3s ease;
+        }
+        
+        .test-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            border-color: #667eea;
+        }
+        
+        .test-card h3 {
+            color: #2d3748;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .test-status {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .status-pending {
+            background: #fed7d7;
+            color: #c53030;
+        }
+        
+        .status-testing {
+            background: #fef5e7;
+            color: #d69e2e;
+        }
+        
+        .status-passed {
+            background: #c6f6d5;
+            color: #38a169;
+        }
+        
+        .status-failed {
+            background: #fed7d7;
+            color: #e53e3e;
+        }
+        
+        .test-features {
+            list-style: none;
+            margin: 15px 0;
+        }
+        
+        .test-features li {
+            padding: 5px 0;
+            color: #4a5568;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .feature-check {
+            width: 16px;
+            height: 16px;
+            border: 2px solid #cbd5e0;
+            border-radius: 3px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .feature-check.checked {
+            background: #48bb78;
+            border-color: #48bb78;
+            color: white;
+        }
+        
+        .test-url {
+            background: #edf2f7;
+            padding: 10px;
+            border-radius: 8px;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+            color: #2d3748;
+            margin: 10px 0;
+            word-break: break-all;
+        }
+        
+        .test-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s ease;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #5a67d8;
+        }
+        
+        .btn-success {
+            background: #48bb78;
+            color: white;
+        }
+        
+        .btn-danger {
+            background: #e53e3e;
+            color: white;
+        }
+        
+        .btn-secondary {
+            background: #edf2f7;
+            color: #4a5568;
+        }
+        
+        .btn-secondary:hover {
+            background: #e2e8f0;
+        }
+        
+        .controls {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .controls .btn {
+            margin: 0 10px;
+        }
+        
+        .summary {
+            background: #f7fafc;
+            border-radius: 15px;
+            padding: 20px;
+            margin-top: 30px;
+        }
+        
+        .summary h3 {
+            color: #2d3748;
+            margin-bottom: 15px;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 15px;
+            text-align: center;
+        }
+        
+        .stat-item {
+            padding: 15px;
+            border-radius: 10px;
+            color: white;
+            font-weight: bold;
+        }
+        
+        .stat-passed { background: #48bb78; }
+        .stat-failed { background: #e53e3e; }
+        .stat-pending { background: #a0aec0; }
+        .stat-total { background: #667eea; }
+        
+        .responsive-test {
+            margin-top: 20px;
+            padding: 15px;
+            background: #e6fffa;
+            border-left: 4px solid #38b2ac;
+            border-radius: 8px;
+        }
+        
+        .screen-sizes {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .screen-size {
+            padding: 5px 10px;
+            background: #38b2ac;
+            color: white;
+            border-radius: 5px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 VYNL Testing Dashboard</h1>
+        <p class="subtitle">Test all your platform features systematically</p>
+        
+        <div class="controls">
+            <button class="btn btn-primary" onclick="startFullTest()">🚀 Start Full Test</button>
+            <button class="btn btn-secondary" onclick="resetAllTests()">🔄 Reset All</button>
+            <button class="btn btn-secondary" onclick="exportResults()">📊 Export Results</button>
+        </div>
+        
+        <div class="test-grid" id="testGrid">
+            <!-- Test cards will be inserted here by JavaScript -->
+        </div>
+        
+        <div class="summary">
+            <h3>📊 Testing Summary</h3>
+            <div class="stats" id="stats">
+                <div class="stat-item stat-total">
+                    <div>Total Tests</div>
+                    <div id="totalTests">0</div>
+                </div>
+                <div class="stat-item stat-passed">
+                    <div>Passed</div>
+                    <div id="passedTests">0</div>
+                </div>
+                <div class="stat-item stat-failed">
+                    <div>Failed</div>
+                    <div id="failedTests">0</div>
+                </div>
+                <div class="stat-item stat-pending">
+                    <div>Pending</div>
+                    <div id="pendingTests">0</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="responsive-test">
+            <h4>📱 Responsive Testing</h4>
+            <p>Test your current page at different screen sizes:</p>
+            <div class="screen-sizes">
+                <div class="screen-size" onclick="resizeWindow(375, 667)">📱 Mobile</div>
+                <div class="screen-size" onclick="resizeWindow(768, 1024)">📱 Tablet</div>
+                <div class="screen-size" onclick="resizeWindow(1440, 900)">💻 Desktop</div>
+                <div class="screen-size" onclick="resizeWindow(1920, 1080)">🖥️ Large</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Test configuration
+        const testPages = [
+            {
+                name: "Homepage",
+                url: "http://localhost:3001/",
+                features: [
+                    "Beta banner displays when enabled",
+                    "Navigation menu works",
+                    "Sign in/Sign up buttons work",
+                    "Responsive design",
+                    "Footer links work"
+                ]
+            },
+            {
+                name: "Sign In",
+                url: "http://localhost:3001/auth/signin",
+                features: [
+                    "Login form works",
+                    "Form validation",
+                    "Error messages display",
+                    "Redirect after login",
+                    "Social login buttons"
+                ]
+            },
+            {
+                name: "Discover",
+                url: "http://localhost:3001/discover",
+                features: [
+                    "Search functionality",
+                    "Tab switching works",
+                    "Beta AI recommendations",
+                    "Responsive grid",
+                    "Track interactions"
+                ]
+            },
+            {
+                name: "Creator Application",
+                url: "http://localhost:3001/creator",
+                features: [
+                    "Application form",
+                    "File upload works",
+                    "Form validation",
+                    "Success messages",
+                    "Genre selection"
+                ]
+            },
+            {
+                name: "Creator Shop",
+                url: "http://localhost:3001/creator/shop",
+                features: [
+                    "Product creation form",
+                    "Image upload",
+                    "Price validation",
+                    "Product listing",
+                    "Shop management"
+                ]
+            },
+            {
+                name: "Dashboard",
+                url: "http://localhost:3001/dashboard",
+                features: [
+                    "User stats display",
+                    "Navigation works",
+                    "Recent activity",
+                    "Profile access",
+                    "Settings menu"
+                ]
+            },
+            {
+                name: "Admin Panel",
+                url: "http://localhost:3001/admin",
+                features: [
+                    "Access control works",
+                    "All tabs functional",
+                    "Beta settings work",
+                    "User management",
+                    "System settings"
+                ]
+            }
+        ];
+
+        // Test state
+        let testState = {};
+
+        // Initialize test state
+        function initTestState() {
+            testPages.forEach(page => {
+                testState[page.name] = {
+                    status: 'pending',
+                    features: {},
+                    notes: ''
+                };
+                page.features.forEach(feature => {
+                    testState[page.name].features[feature] = false;
+                });
+            });
+            updateStats();
+        }
+
+        // Create test cards
+        function createTestCards() {
+            const grid = document.getElementById('testGrid');
+            grid.innerHTML = '';
+            
+            testPages.forEach(page => {
+                const card = document.createElement('div');
+                card.className = 'test-card';
+                card.innerHTML = `
+                    <h3>
+                        ${page.name}
+                        <span class="test-status status-${testState[page.name].status}" id="status-${page.name}">
+                            ${testState[page.name].status}
+                        </span>
+                    </h3>
+                    
+                    <div class="test-url">${page.url}</div>
+                    
+                    <ul class="test-features">
+                        ${page.features.map(feature => `
+                            <li>
+                                <div class="feature-check ${testState[page.name].features[feature] ? 'checked' : ''}" 
+                                     onclick="toggleFeature('${page.name}', '${feature}')">
+                                    ${testState[page.name].features[feature] ? '✓' : ''}
+                                </div>
+                                ${feature}
+                            </li>
+                        `).join('')}
+                    </ul>
+                    
+                    <div class="test-buttons">
+                        <a href="${page.url}" target="_blank" class="btn btn-primary">🔗 Open Page</a>
+                        <button class="btn btn-success" onclick="markPassed('${page.name}')">✅ Pass</button>
+                        <button class="btn btn-danger" onclick="markFailed('${page.name}')">❌ Fail</button>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        // Toggle feature check
+        function toggleFeature(pageName, feature) {
+            testState[pageName].features[feature] = !testState[pageName].features[feature];
+            
+            // Check if all features are checked
+            const allChecked = Object.values(testState[pageName].features).every(checked => checked);
+            if (allChecked && testState[pageName].status === 'pending') {
+                testState[pageName].status = 'testing';
+            }
+            
+            createTestCards();
+            updateStats();
+        }
+
+        // Mark test as passed
+        function markPassed(pageName) {
+            testState[pageName].status = 'passed';
+            // Mark all features as checked
+            Object.keys(testState[pageName].features).forEach(feature => {
+                testState[pageName].features[feature] = true;
+            });
+            createTestCards();
+            updateStats();
+        }
+
+        // Mark test as failed
+        function markFailed(pageName) {
+            testState[pageName].status = 'failed';
+            const notes = prompt(`What issues did you find on ${pageName}?`);
+            testState[pageName].notes = notes || '';
+            createTestCards();
+            updateStats();
+        }
+
+        // Update statistics
+        function updateStats() {
+            const total = testPages.length;
+            const passed = Object.values(testState).filter(test => test.status === 'passed').length;
+            const failed = Object.values(testState).filter(test => test.status === 'failed').length;
+            const pending = total - passed - failed;
+            
+            document.getElementById('totalTests').textContent = total;
+            document.getElementById('passedTests').textContent = passed;
+            document.getElementById('failedTests').textContent = failed;
+            document.getElementById('pendingTests').textContent = pending;
+        }
+
+        // Start full test
+        function startFullTest() {
+            if (confirm('This will open all test pages in new tabs. Continue?')) {
+                testPages.forEach((page, index) => {
+                    setTimeout(() => {
+                        window.open(page.url, `_blank_${index}`);
+                    }, index * 1000); // Stagger opening by 1 second
+                });
+            }
+        }
+
+        // Reset all tests
+        function resetAllTests() {
+            if (confirm('Reset all test results?')) {
+                initTestState();
+                createTestCards();
+            }
+        }
+
+        // Export results
+        function exportResults() {
+            const results = {
+                timestamp: new Date().toISOString(),
+                summary: {
+                    total: testPages.length,
+                    passed: Object.values(testState).filter(test => test.status === 'passed').length,
+                    failed: Object.values(testState).filter(test => test.status === 'failed').length
+                },
+                details: testState
+            };
+            
+            const blob = new Blob([JSON.stringify(results, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `vynl-test-results-${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // Resize window for responsive testing
+        function resizeWindow(width, height) {
+            window.resizeTo(width, height);
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            initTestState();
+            createTestCards();
+        });
+    </script>
+</body>
+</html>

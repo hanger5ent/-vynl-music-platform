@@ -1,0 +1,763 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User management
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  username      String    @unique
+  name          String?
+  bio           String?
+  avatar        String?
+  isArtist      Boolean   @default(false)
+  isVerified    Boolean   @default(false)
+  isAdmin       Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Authentication
+  accounts      Account[]
+  sessions      Session[]
+  
+  // Artist profile
+  artistProfile ArtistProfile?
+  
+  // Music interactions
+  tracks        Track[]    @relation("TrackOwner")
+  albums        Album[]    @relation("AlbumOwner")
+  playlists     Playlist[] @relation("PlaylistOwner")
+  
+  // Social features
+  followers     Follow[]   @relation("UserFollowers")
+  following     Follow[]   @relation("UserFollowing")
+  likes         Like[]
+  comments      Comment[]
+  
+  // Purchases
+  purchases     Purchase[]
+  
+  // Creator subscription system
+  subscriptions     CreatorSubscription[] @relation("UserSubscriptions")
+  subscribers       CreatorSubscription[] @relation("CreatorSubscribers")
+  emailLists        CreatorEmailList[]    @relation("CreatorEmailLists")
+  emailCampaigns    EmailCampaign[]       @relation("CreatorCampaigns")
+  emailDeliveries   EmailDelivery[]       @relation("EmailDeliveries")
+  
+  // Community
+  forumPosts    ForumPost[]
+  forumComments ForumComment[]
+  
+  // Invites
+  createdInvites Invite[] @relation("InviteCreator")
+  usedInvite     Invite?  @relation("InviteUser")
+  
+  // Events
+  organizedEvents Event[] @relation("EventOrganizer")
+  eventAttendees  EventAttendee[]
+  
+  // Shop
+  products       Product[] @relation("ProductSeller")
+  orders         Order[]   @relation("OrderCustomer")
+  
+  @@map("users")
+}
+
+// Artist-specific profile
+model ArtistProfile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  stageName   String?
+  genre       String[]
+  location    String?
+  website     String?
+  socialLinks Json?
+  
+  // Revenue settings
+  stripeAccountId String?
+  payoutEmail     String?
+  
+  // Statistics
+  totalStreams    Int      @default(0)
+  totalRevenue    Decimal  @default(0) @db.Decimal(10, 2)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@map("artist_profiles")
+}
+
+// Music content
+model Track {
+  id          String   @id @default(cuid())
+  title       String
+  slug        String   @unique
+  description String?
+  duration    Int      // in seconds
+  
+  // File storage
+  audioUrl    String
+  waveformData Json?
+  
+  // Metadata
+  genre       String?
+  tags        String[]
+  lyrics      String?
+  
+  // Ownership
+  ownerId     String
+  owner       User     @relation("TrackOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  
+  // Album association
+  albumId     String?
+  album       Album?   @relation(fields: [albumId], references: [id])
+  trackNumber Int?
+  
+  // Pricing
+  price       Decimal? @db.Decimal(10, 2)
+  isFree      Boolean  @default(false)
+  
+  // Stats
+  playCount   Int      @default(0)
+  likeCount   Int      @default(0)
+  
+  // Timestamps
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  likes       Like[]
+  comments    Comment[]
+  purchases   Purchase[]
+  playlistTracks PlaylistTrack[]
+  
+  @@map("tracks")
+}
+
+model Album {
+  id          String   @id @default(cuid())
+  title       String
+  slug        String   @unique
+  description String?
+  
+  // Artwork
+  coverImage  String?
+  
+  // Ownership
+  ownerId     String
+  owner       User     @relation("AlbumOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  
+  // Metadata
+  genre       String?
+  releaseDate DateTime?
+  
+  // Pricing
+  price       Decimal? @db.Decimal(10, 2)
+  isFree      Boolean  @default(false)
+  
+  // Content
+  tracks      Track[]
+  
+  // Stats
+  likeCount   Int      @default(0)
+  
+  // Timestamps
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  likes       Like[]
+  comments    Comment[]
+  purchases   Purchase[]
+  
+  @@map("albums")
+}
+
+// Playlists
+model Playlist {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  coverImage  String?
+  
+  isPublic    Boolean  @default(true)
+  
+  // Ownership
+  ownerId     String
+  owner       User     @relation("PlaylistOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  
+  // Content
+  tracks      PlaylistTrack[]
+  
+  // Stats
+  likeCount   Int      @default(0)
+  
+  // Timestamps
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  likes       Like[]
+  
+  @@map("playlists")
+}
+
+model PlaylistTrack {
+  id         String   @id @default(cuid())
+  playlistId String
+  playlist   Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  trackId    String
+  track      Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  
+  position   Int
+  addedAt    DateTime @default(now())
+  
+  @@unique([playlistId, trackId])
+  @@map("playlist_tracks")
+}
+
+// Social features
+model Follow {
+  id          String @id @default(cuid())
+  followerId  String
+  follower    User   @relation("UserFollowing", fields: [followerId], references: [id], onDelete: Cascade)
+  followingId String
+  following   User   @relation("UserFollowers", fields: [followingId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime @default(now())
+  
+  @@unique([followerId, followingId])
+  @@map("follows")
+}
+
+model Like {
+  id        String @id @default(cuid())
+  userId    String
+  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Polymorphic likes
+  trackId    String?
+  track      Track?    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  albumId    String?
+  album      Album?    @relation(fields: [albumId], references: [id], onDelete: Cascade)
+  playlistId String?
+  playlist   Playlist? @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  
+  @@unique([userId, trackId])
+  @@unique([userId, albumId])
+  @@unique([userId, playlistId])
+  @@map("likes")
+}
+
+model Comment {
+  id      String @id @default(cuid())
+  content String
+  userId  String
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Polymorphic comments
+  trackId String?
+  track   Track? @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  albumId String?
+  album   Album? @relation(fields: [albumId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("comments")
+}
+
+// Commerce
+model Purchase {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // What was purchased
+  trackId    String?
+  track      Track?   @relation(fields: [trackId], references: [id])
+  albumId    String?
+  album      Album?   @relation(fields: [albumId], references: [id])
+  
+  // Payment details
+  amount     Decimal  @db.Decimal(10, 2)
+  currency   String   @default("usd")
+  
+  // Stripe
+  stripeSessionId String?
+  stripePaymentIntentId String?
+  
+  status     PurchaseStatus @default(PENDING)
+  
+  createdAt  DateTime @default(now())
+  
+  @@map("purchases")
+}
+
+// Creator Subscription System
+model CreatorSubscription {
+  id          String   @id @default(cuid())
+  
+  // Subscriber (fan)
+  subscriberId String
+  subscriber   User     @relation("UserSubscriptions", fields: [subscriberId], references: [id], onDelete: Cascade)
+  
+  // Creator being subscribed to
+  creatorId    String
+  creator      User     @relation("CreatorSubscribers", fields: [creatorId], references: [id], onDelete: Cascade)
+  
+  // Subscription details
+  tier         SubscriptionTier @default(BASIC)
+  status       SubscriptionStatus @default(ACTIVE)
+  
+  // Payment details
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  priceId             String?
+  amount              Decimal  @db.Decimal(10, 2)
+  currency            String   @default("usd")
+  
+  // Email consent and preferences
+  emailConsent        Boolean  @default(true)
+  emailPreferences    Json?    // JSON object for granular preferences
+  
+  // Timestamps
+  startDate    DateTime @default(now())
+  endDate      DateTime?
+  nextBilling  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  @@unique([subscriberId, creatorId])
+  @@map("creator_subscriptions")
+}
+
+// Creator Email Lists for newsletters/updates
+model CreatorEmailList {
+  id          String   @id @default(cuid())
+  
+  // Creator who owns the list
+  creatorId   String
+  creator     User     @relation("CreatorEmailLists", fields: [creatorId], references: [id], onDelete: Cascade)
+  
+  // List details
+  name        String   // e.g., "Premium Fans", "All Subscribers", "VIP Members"
+  description String?
+  listType    EmailListType @default(SUBSCRIPTION_BASED)
+  
+  // Criteria for automatic inclusion
+  includeTiers Json?   // Which subscription tiers to include
+  includeAll  Boolean @default(false)
+  
+  // Email campaigns sent to this list
+  campaigns   EmailCampaign[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@map("creator_email_lists")
+}
+
+// Email campaigns sent by creators
+model EmailCampaign {
+  id          String   @id @default(cuid())
+  
+  // Creator sending the campaign
+  creatorId   String
+  creator     User     @relation("CreatorCampaigns", fields: [creatorId], references: [id], onDelete: Cascade)
+  
+  // Email list used
+  emailListId String
+  emailList   CreatorEmailList @relation(fields: [emailListId], references: [id], onDelete: Cascade)
+  
+  // Campaign details
+  subject     String
+  content     String   // HTML content
+  textContent String?  // Plain text version
+  
+  // Scheduling
+  scheduledAt DateTime?
+  sentAt      DateTime?
+  status      CampaignStatus @default(DRAFT)
+  
+  // Stats
+  totalRecipients Int      @default(0)
+  sentCount       Int      @default(0)
+  openCount       Int      @default(0)
+  clickCount      Int      @default(0)
+  
+  // Tracking
+  emailDeliveries EmailDelivery[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@map("email_campaigns")
+}
+
+// Track individual email deliveries and engagement
+model EmailDelivery {
+  id            String   @id @default(cuid())
+  
+  // Campaign and recipient
+  campaignId    String
+  campaign      EmailCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  
+  recipientId   String
+  recipient     User     @relation("EmailDeliveries", fields: [recipientId], references: [id], onDelete: Cascade)
+  
+  // Delivery details
+  emailAddress  String
+  status        DeliveryStatus @default(PENDING)
+  
+  // Engagement tracking
+  sentAt        DateTime?
+  deliveredAt   DateTime?
+  openedAt      DateTime?
+  clickedAt     DateTime?
+  bounced       Boolean  @default(false)
+  unsubscribed  Boolean  @default(false)
+  
+  // Tracking data
+  openCount     Int      @default(0)
+  clickCount    Int      @default(0)
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@unique([campaignId, recipientId])
+  @@map("email_deliveries")
+}
+
+// Community forums
+model ForumPost {
+  id        String   @id @default(cuid())
+  title     String
+  content   String
+  category  String   // e.g., "rock", "electronic", "general"
+  
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  
+  comments  ForumComment[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("forum_posts")
+}
+
+model ForumComment {
+  id       String    @id @default(cuid())
+  content  String
+  
+  postId   String
+  post     ForumPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  
+  authorId String
+  author   User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("forum_comments")
+}
+
+// Events system
+model Event {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  
+  // Event details
+  startDate   DateTime
+  endDate     DateTime?
+  location    String?
+  venue       String?
+  isOnline    Boolean  @default(false)
+  
+  // Pricing
+  price       Decimal? @db.Decimal(10, 2)
+  isFree      Boolean  @default(false)
+  maxTickets  Int?
+  
+  // Media
+  coverImage  String?
+  
+  // Organizer
+  organizerId String
+  organizer   User     @relation("EventOrganizer", fields: [organizerId], references: [id], onDelete: Cascade)
+  
+  // Attendees
+  attendees   EventAttendee[]
+  
+  // Status
+  status      EventStatus @default(DRAFT)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@map("events")
+}
+
+model EventAttendee {
+  id        String   @id @default(cuid())
+  eventId   String
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  ticketType String? // e.g., "general", "vip", "early_bird"
+  quantity   Int     @default(1)
+  
+  // Payment
+  amountPaid Decimal @db.Decimal(10, 2)
+  
+  createdAt  DateTime @default(now())
+  
+  @@unique([eventId, userId])
+  @@map("event_attendees")
+}
+
+// Shop system
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  
+  // Pricing
+  price       Decimal  @db.Decimal(10, 2)
+  
+  // Inventory
+  stock       Int      @default(0)
+  
+  // Media
+  images      String[]
+  
+  // Categories
+  category    ProductCategory
+  tags        String[]
+  
+  // Seller
+  sellerId    String
+  seller      User     @relation("ProductSeller", fields: [sellerId], references: [id], onDelete: Cascade)
+  
+  // Orders
+  orderItems  OrderItem[]
+  
+  // Status
+  isActive    Boolean  @default(true)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@map("products")
+}
+
+model Order {
+  id          String   @id @default(cuid())
+  
+  // Customer
+  customerId  String
+  customer    User     @relation("OrderCustomer", fields: [customerId], references: [id], onDelete: Cascade)
+  
+  // Items
+  items       OrderItem[]
+  
+  // Pricing
+  subtotal    Decimal  @db.Decimal(10, 2)
+  tax         Decimal  @db.Decimal(10, 2) @default(0)
+  shipping    Decimal  @db.Decimal(10, 2) @default(0)
+  total       Decimal  @db.Decimal(10, 2)
+  
+  // Shipping
+  shippingAddress Json?
+  
+  // Payment
+  stripeSessionId String?
+  paymentStatus   PaymentStatus @default(PENDING)
+  
+  // Order status
+  orderStatus OrderStatus @default(PENDING)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@map("orders")
+}
+
+model OrderItem {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  
+  quantity  Int
+  price     Decimal  @db.Decimal(10, 2)
+  
+  @@map("order_items")
+}
+
+// Invite system
+model Invite {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  email       String?
+  type        InviteType @default(ARTIST)
+  
+  // Invite details
+  createdBy   String
+  creator     User     @relation("InviteCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  
+  // Usage tracking
+  usedBy      String?  @unique
+  user        User?    @relation("InviteUser", fields: [usedBy], references: [id])
+  usedAt      DateTime?
+  
+  // Expiration
+  expiresAt   DateTime?
+  
+  // Status
+  isActive    Boolean  @default(true)
+  
+  createdAt   DateTime @default(now())
+  
+  @@map("invites")
+}
+
+// NextAuth.js required models
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// Enums
+enum PurchaseStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum InviteType {
+  ARTIST
+  CREATOR
+  ADMIN
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+  COMPLETED
+}
+
+enum ProductCategory {
+  MERCHANDISE
+  VINYL
+  CD
+  DIGITAL
+  APPAREL
+  ACCESSORIES
+  TICKETS
+  OTHER
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum SubscriptionTier {
+  BASIC
+  PREMIUM
+  VIP
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELLED
+  PAST_DUE
+  PAUSED
+  EXPIRED
+}
+
+enum EmailListType {
+  SUBSCRIPTION_BASED
+  MANUAL
+  MIXED
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  SENDING
+  SENT
+  CANCELLED
+}
+
+enum DeliveryStatus {
+  PENDING
+  SENT
+  DELIVERED
+  BOUNCED
+  FAILED
+}
