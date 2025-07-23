@@ -31,9 +31,9 @@ export function Sidebar({ userType }: SidebarProps) {
     { name: 'My Library', href: '/library', icon: HeartIcon },
     { name: 'Playlists', href: '/playlists', icon: UsersIcon },
     { name: 'Following', href: '/following', icon: UsersIcon },
+    { name: 'Community', href: '/community', icon: ChatBubbleLeftEllipsisIcon },
     { name: 'Purchases', href: '/purchases', icon: ShoppingBagIcon },
     { name: 'Events', href: '/fan/events', icon: CalendarDaysIcon },
-    { name: 'Community', href: '/fan/community', icon: ChatBubbleLeftEllipsisIcon },
     { name: 'Settings', href: '/settings', icon: CogIcon },
   ]
 
@@ -43,6 +43,7 @@ export function Sidebar({ userType }: SidebarProps) {
     { name: 'My Library', href: '/library', icon: HeartIcon },
     { name: 'Playlists', href: '/playlists', icon: UsersIcon },
     { name: 'Following', href: '/following', icon: UsersIcon },
+    { name: 'Community', href: '/community', icon: ChatBubbleLeftEllipsisIcon },
     { name: 'Purchases', href: '/purchases', icon: ShoppingBagIcon },
     { name: 'Creator Studio', href: '/creator/studio', icon: PlusCircleIcon },
     { name: 'Shop', href: '/creator/shop', icon: ShoppingBagIcon },
