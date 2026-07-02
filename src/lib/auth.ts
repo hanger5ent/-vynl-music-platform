@@ -42,7 +42,7 @@ export const authOptions: NextAuthOptions = {
       if (session.user && token) {
         session.user.id = token.id as string
         session.user.username = token.username as string || session.user.email?.split('@')[0]
-        session.user.isArtist = token.isArtist as boolean || false
+        session.user.isCreator = token.isCreator as boolean || false
         session.user.isVerified = token.isVerified as boolean || false
         session.user.isAdmin = token.isAdmin as boolean || false
       }
@@ -52,7 +52,7 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.id = user.id
         token.username = user.name || user.email?.split('@')[0] || 'user'
-        token.isArtist = false
+        token.isCreator = false
         token.isVerified = false
         token.isAdmin = false
       }

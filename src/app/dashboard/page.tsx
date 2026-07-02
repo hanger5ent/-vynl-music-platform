@@ -34,7 +34,7 @@ export default function DashboardPage() {
             Welcome back, {session?.user?.name || session?.user?.email?.split('@')[0]}!
           </h1>
           <p className="text-gray-600 mt-2">
-            {session?.user?.isArtist 
+            {session?.user?.isCreator 
               ? 'Manage your music, analytics, and fan engagement.' 
               : 'Discover amazing music and support your favorite artists.'
             }
@@ -42,7 +42,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Creator Status */}
-        {!session?.user?.isArtist && (
+        {!session?.user?.isCreator && (
           <div className="mb-8 bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-lg p-6">
             <div className="flex items-start justify-between">
               <div>
@@ -81,7 +81,7 @@ export default function DashboardPage() {
         )}
 
         {/* Artist Dashboard */}
-        {session?.user?.isArtist && (
+        {session?.user?.isCreator && (
           <div className="mb-8">
             <div className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg p-6 mb-6">
               <h2 className="text-xl font-semibold mb-2">

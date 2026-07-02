@@ -64,7 +64,7 @@ export function UserDropdown() {
             Profile
           </Link>
 
-          {session.user.isArtist && (
+          {session.user.isCreator && (
             <Link
               href="/artist"
               className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"

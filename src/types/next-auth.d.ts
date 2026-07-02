@@ -8,7 +8,7 @@ declare module 'next-auth' {
       name?: string | null
       image?: string | null
       username?: string
-      isArtist?: boolean
+      isCreator?: boolean
       isVerified?: boolean
       isAdmin?: boolean
       bio?: string | null
@@ -22,7 +22,7 @@ declare module 'next-auth' {
     name?: string | null
     image?: string | null
     username?: string
-    isArtist?: boolean
+    isCreator?: boolean
     isVerified?: boolean
     isAdmin?: boolean
     bio?: string | null
@@ -34,7 +34,7 @@ declare module 'next-auth/jwt' {
   interface JWT {
     id: string
     username?: string
-    isArtist?: boolean
+    isCreator?: boolean
     isVerified?: boolean
     isAdmin?: boolean
     bio?: string | null

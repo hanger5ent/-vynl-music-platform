@@ -10,8 +10,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Check if user is an artist
-    if (!session.user.isArtist) {
+    // Check if user is a creator
+    if (!session.user.isCreator) {
       return NextResponse.json({ error: 'Only artists can upload music' }, { status: 403 })
     }
 
