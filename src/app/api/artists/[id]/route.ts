@@ -18,12 +18,12 @@ export async function GET(
       email: 'sarah@example.com',
       bio: 'Pop artist creating feel-good music for the soul. Based in Los Angeles, bringing summer vibes year-round.',
       avatar: 'https://images.unsplash.com/photo-1494790108755-2616b332de0b?w=400&h=400&fit=crop&crop=face',
-      isArtist: true,
+      isCreator: true,
       isVerified: true,
       createdAt: '2023-06-15T10:00:00Z',
-      
-      // Artist-specific profile
-      artistProfile: {
+
+      // Creator-specific profile
+      creatorProfile: {
         stageName: 'Sarah Music',
         genre: ['Pop', 'Indie Pop', 'Electronic'],
         location: 'Los Angeles, CA',

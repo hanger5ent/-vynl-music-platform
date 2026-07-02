@@ -18,18 +18,20 @@ model User {
   name          String?
   bio           String?
   avatar        String?
-  isArtist      Boolean   @default(false)
+  // Hashed with bcrypt. Null for accounts that only ever use an OAuth provider.
+  password      String?
+  isCreator     Boolean   @default(false)
   isVerified    Boolean   @default(false)
   isAdmin       Boolean   @default(false)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
-  
+
   // Authentication
   accounts      Account[]
   sessions      Session[]
-  
-  // Artist profile
-  artistProfile ArtistProfile?
+
+  // Creator profile
+  creatorProfile CreatorProfile?
   
   // Music interactions
   tracks        Track[]    @relation("TrackOwner")
@@ -60,10 +62,19 @@ model User {
   createdInvites Invite[] @relation("InviteCreator")
   usedInvite     Invite?  @relation("InviteUser")
   
-  // Events
-  organizedEvents Event[] @relation("EventOrganizer")
-  eventAttendees  EventAttendee[]
-  
+  // Live events (concerts, listings)
+  organizedEventListings EventListing[] @relation("EventListingOrganizer")
+  eventTickets           EventTicket[]
+
+  // Event log (analytics)
+  events        Event[]
+
+  // Revenue ledger (creator earnings)
+  revenueLedgerEntries RevenueLedger[]
+
+  // Royalty splits where this user is the registered rights holder
+  royaltySplitsHeld RoyaltySplit[] @relation("RoyaltySplitHolder")
+
   // Shop
   products       Product[] @relation("ProductSeller")
   orders         Order[]   @relation("OrderCustomer")
@@ -71,30 +82,30 @@ model User {
   @@map("users")
 }
 
-// Artist-specific profile
-model ArtistProfile {
+// Creator-specific profile
+model CreatorProfile {
   id          String   @id @default(cuid())
   userId      String   @unique
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
   stageName   String?
   genre       String[]
   location    String?
   website     String?
   socialLinks Json?
-  
-  // Revenue settings
+
+  // Revenue settings (Stripe Connect Express)
   stripeAccountId String?
   payoutEmail     String?
-  
+
   // Statistics
   totalStreams    Int      @default(0)
   totalRevenue    Decimal  @default(0) @db.Decimal(10, 2)
-  
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  
-  @@map("artist_profiles")
+
+  @@map("creator_profiles")
 }
 
 // Music content
@@ -113,7 +124,18 @@ model Track {
   genre       String?
   tags        String[]
   lyrics      String?
-  
+
+  // Rights & royalty reporting
+  // ISRC: industry-standard recording identifier, required by PROs
+  // (ASCAP/BMI/SoundExchange) to match plays to a specific recording.
+  isrc              String?   @unique
+  // Self-certification captured at upload time in lieu of automated
+  // content-ID/audio-fingerprinting (not implemented — would require a
+  // third-party service like ACRCloud or Audible Magic).
+  rightsAttested    Boolean   @default(false)
+  rightsAttestedAt  DateTime?
+  royaltySplits     RoyaltySplit[]
+
   // Ownership
   ownerId     String
   owner       User     @relation("TrackOwner", fields: [ownerId], references: [id], onDelete: Cascade)
@@ -140,8 +162,42 @@ model Track {
   comments    Comment[]
   purchases   Purchase[]
   playlistTracks PlaylistTrack[]
-  
+  events      Event[]
+
   @@map("tracks")
+}
+
+// Registered rights/ownership split for a track — who gets credited and
+// what share, for royalty and PRO-reporting purposes. This records
+// ownership; it does not itself move money (see RevenueLedger for that).
+model RoyaltySplit {
+  id      String @id @default(cuid())
+  trackId String
+  track   Track  @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  role       RoyaltyHolderRole
+  // Percentage of this role's royalty pool held by this party, 0-100.
+  percentage Decimal @db.Decimal(5, 2)
+
+  // The rights holder, either a platform user or an off-platform contact
+  holderName  String
+  holderEmail String?
+  holderUserId String?
+  holderUser   User?  @relation("RoyaltySplitHolder", fields: [holderUserId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([trackId])
+  @@map("royalty_splits")
+}
+
+enum RoyaltyHolderRole {
+  SONGWRITER
+  PERFORMER
+  PRODUCER
+  PUBLISHER
+  OTHER
 }
 
 model Album {
@@ -300,10 +356,60 @@ model Purchase {
   stripePaymentIntentId String?
   
   status     PurchaseStatus @default(PENDING)
-  
+
   createdAt  DateTime @default(now())
-  
+
+  // Revenue ledger entries generated from this purchase
+  revenueLedgerEntries RevenueLedger[]
+
   @@map("purchases")
+}
+
+// Revenue ledger — the append-only record of everything that moves money
+// for a creator (subscription payments, one-off purchases, platform fees,
+// payouts, refunds). Creator earnings dashboards read from this, not from
+// CreatorProfile.totalRevenue (which is a cached rollup for display only).
+model RevenueLedger {
+  id        String   @id @default(cuid())
+
+  creatorId String
+  creator   User     @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+  type      RevenueLedgerEntryType
+
+  // Gross amount of this entry, in the entry's currency. Platform fee
+  // entries and payouts are recorded as negative amounts.
+  amount    Decimal  @db.Decimal(10, 2)
+  currency  String   @default("usd")
+
+  // application_fee_percent applied at the time of this entry, if relevant
+  platformFeePercent Decimal? @db.Decimal(5, 2)
+
+  // Links back to the source record, whichever applies
+  purchaseId     String?
+  purchase       Purchase?            @relation(fields: [purchaseId], references: [id])
+  subscriptionId String?
+  subscription   CreatorSubscription? @relation(fields: [subscriptionId], references: [id])
+
+  // Stripe references
+  stripeTransferId      String?
+  stripePaymentIntentId String?
+
+  description String?
+
+  createdAt DateTime @default(now())
+
+  @@index([creatorId])
+  @@map("revenue_ledger")
+}
+
+enum RevenueLedgerEntryType {
+  SUBSCRIPTION_PAYMENT
+  TRACK_PURCHASE
+  ALBUM_PURCHASE
+  PLATFORM_FEE
+  PAYOUT
+  REFUND
 }
 
 // Creator Subscription System
@@ -339,7 +445,10 @@ model CreatorSubscription {
   nextBilling  DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
-  
+
+  // Revenue ledger entries generated from this subscription
+  revenueLedgerEntries RevenueLedger[]
+
   @@unique([subscriberId, creatorId])
   @@map("creator_subscriptions")
 }
@@ -475,60 +584,91 @@ model ForumComment {
   @@map("forum_comments")
 }
 
-// Events system
-model Event {
+// Live events system (concerts, ticketed listings)
+// Named EventListing/EventTicket to avoid colliding with the analytics
+// Event model below, which owns the "events" table per the platform's
+// event-log terminology (see Event model).
+model EventListing {
   id          String   @id @default(cuid())
   title       String
   description String?
-  
+
   // Event details
   startDate   DateTime
   endDate     DateTime?
   location    String?
   venue       String?
   isOnline    Boolean  @default(false)
-  
+
   // Pricing
   price       Decimal? @db.Decimal(10, 2)
   isFree      Boolean  @default(false)
   maxTickets  Int?
-  
+
   // Media
   coverImage  String?
-  
+
   // Organizer
   organizerId String
-  organizer   User     @relation("EventOrganizer", fields: [organizerId], references: [id], onDelete: Cascade)
-  
+  organizer   User     @relation("EventListingOrganizer", fields: [organizerId], references: [id], onDelete: Cascade)
+
   // Attendees
-  attendees   EventAttendee[]
-  
+  tickets     EventTicket[]
+
   // Status
   status      EventStatus @default(DRAFT)
-  
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  
-  @@map("events")
+
+  @@map("event_listings")
 }
 
-model EventAttendee {
+model EventTicket {
   id        String   @id @default(cuid())
   eventId   String
-  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  event     EventListing @relation(fields: [eventId], references: [id], onDelete: Cascade)
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
   ticketType String? // e.g., "general", "vip", "early_bird"
   quantity   Int     @default(1)
-  
+
   // Payment
   amountPaid Decimal @db.Decimal(10, 2)
-  
+
   createdAt  DateTime @default(now())
-  
+
   @@unique([eventId, userId])
-  @@map("event_attendees")
+  @@map("event_tickets")
+}
+
+// Event log (analytics) — tracks the track/creator lifecycle: signup,
+// track_uploaded, track_played, purchase, subscribe, etc.
+// Sprint 1 requirement: "Event system fully wired to track lifecycle."
+model Event {
+  id         String   @id @default(cuid())
+
+  // Event type, e.g. "user.signed_up", "track.uploaded", "track.played", "track.purchased"
+  type       String
+
+  // Actor (nullable for anonymous/system events)
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  // Optional subject references for track-lifecycle events
+  trackId    String?
+  track      Track?   @relation(fields: [trackId], references: [id], onDelete: SetNull)
+
+  // Arbitrary event payload (session id, user agent, ip, etc.)
+  properties Json?
+
+  createdAt  DateTime @default(now())
+
+  @@index([type])
+  @@index([userId])
+  @@index([trackId])
+  @@map("events")
 }
 
 // Shop system

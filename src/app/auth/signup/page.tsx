@@ -32,16 +32,27 @@ export default function SignUpPage() {
     }
 
     try {
-      // In a real app, you'd create the user account first
-      // For demo purposes, we'll just sign them in directly
+      const signupRes = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, password }),
+      })
+      const signupData = await signupRes.json()
+
+      if (!signupRes.ok) {
+        toast.error(signupData.error || 'Failed to create account')
+        setIsLoading(false)
+        return
+      }
+
       const result = await signIn('credentials', {
         email,
-        password: 'password', // For demo - all users use 'password'
+        password,
         redirect: false,
       })
 
       if (result?.error) {
-        toast.error('Failed to create account')
+        toast.error('Account created, but sign in failed. Please try signing in.')
       } else {
         toast.success('Account created successfully!')
         router.push('/dashboard')
@@ -56,6 +67,18 @@ export default function SignUpPage() {
   const handleDemoSignUp = async () => {
     setIsLoading(true)
     try {
+      // Idempotent: creates the demo account on first use, reuses it after.
+      const signupRes = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Demo User', email: 'demo@vynl.com', password: 'password' }),
+      })
+      if (!signupRes.ok && signupRes.status !== 409) {
+        toast.error('Demo signup failed')
+        setIsLoading(false)
+        return
+      }
+
       const result = await signIn('credentials', {
         email: 'demo@vynl.com',
         password: 'password',
@@ -65,7 +88,7 @@ export default function SignUpPage() {
       if (result?.error) {
         toast.error('Demo signup failed')
       } else {
-        toast.success('Demo account created!')
+        toast.success('Signed in as demo user!')
         router.push('/dashboard')
       }
     } catch (error) {
@@ -162,10 +185,6 @@ export default function SignUpPage() {
               />
             </div>
 
-            <div className="text-xs text-gray-500 bg-blue-50 p-3 rounded-md">
-              <strong>Demo Note:</strong> For development purposes, all accounts use the password "password". 
-              Your actual password will be ignored.
-            </div>
           </div>
 
           <div>

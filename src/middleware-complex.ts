@@ -17,7 +17,7 @@ export default withAuth(
     }
 
     // Check if user is an artist for artist-only routes
-    if (token && pathname.startsWith('/artist') && !token.isArtist) {
+    if (token && pathname.startsWith('/artist') && !token.isCreator) {
       return NextResponse.redirect(new URL('/dashboard', req.url))
     }
 

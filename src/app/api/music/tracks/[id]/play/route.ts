@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
 
 // Record a play/stream
+// Note: purchase/subscription-gated playback is Sprint 2 scope and isn't
+// wired up yet — every track is currently streamable once uploaded.
 export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } }
@@ -10,32 +13,35 @@ export async function POST(
   try {
     const session = await getServerSession(authOptions)
     const trackId = params.id
-    const { timestamp, duration } = await req.json()
+    const body = await req.json().catch(() => ({}))
+    const { duration } = body
 
-    // In production, you'd:
-    // 1. Verify the play is legitimate (not bot traffic)
-    // 2. Check if user has permission to play (subscription, purchase, etc.)
-    // 3. Update play count in database
-    // 4. Record analytics data
-    // 5. Pay royalties to artist
-
-    const playRecord = {
-      id: `play_${Date.now()}`,
-      trackId,
-      userId: session?.user?.id || null,
-      timestamp: timestamp || Date.now(),
-      duration: duration || 0,
-      ipAddress: req.ip || 'unknown',
-      userAgent: req.headers.get('user-agent') || 'unknown',
-      createdAt: new Date()
+    const track = await prisma.track.findUnique({ where: { id: trackId } })
+    if (!track) {
+      return NextResponse.json({ error: 'Track not found' }, { status: 404 })
     }
 
-    // Mock: Increment play count
-    console.log(`Track ${trackId} played by user ${session?.user?.id || 'anonymous'}`)
+    const [updated] = await prisma.$transaction([
+      prisma.track.update({
+        where: { id: trackId },
+        data: { playCount: { increment: 1 } },
+      }),
+      prisma.event.create({
+        data: {
+          type: 'track.played',
+          userId: session?.user?.id || null,
+          trackId,
+          properties: {
+            duration: duration || 0,
+            userAgent: req.headers.get('user-agent') || 'unknown',
+          },
+        },
+      }),
+    ])
 
     return NextResponse.json({
       success: true,
-      playRecord,
+      playCount: updated.playCount,
       message: 'Play recorded successfully'
     })
 

@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+import { Prisma } from '@prisma/client'
+
+const SORT_FIELDS: Record<string, string> = {
+  title: 'title',
+  playCount: 'playCount',
+  likeCount: 'likeCount',
+  createdAt: 'createdAt',
+}
 
 // Get all tracks with filtering and pagination
 export async function GET(req: NextRequest) {
@@ -8,138 +17,48 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const genre = searchParams.get('genre')
     const search = searchParams.get('search')
-    const page = parseInt(searchParams.get('page') || '1')
-    const limit = parseInt(searchParams.get('limit') || '20')
-    const sortBy = searchParams.get('sortBy') || 'createdAt'
-    const sortOrder = searchParams.get('sortOrder') || 'desc'
+    const ownerId = searchParams.get('ownerId')
+    const page = Math.max(parseInt(searchParams.get('page') || '1'), 1)
+    const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '20'), 1), 50)
+    const sortBy = SORT_FIELDS[searchParams.get('sortBy') || 'createdAt'] || 'createdAt'
+    const sortOrder = searchParams.get('sortOrder') === 'asc' ? 'asc' : 'desc'
 
-    // Mock data - in production, this would query your database
-    const mockTracks = [
-      {
-        id: '1',
-        title: 'Summer Vibes',
-        slug: 'summer-vibes',
-        description: 'A feel-good summer anthem',
-        audioUrl: 'https://storage.example.com/tracks/summer-vibes.mp3',
-        genre: 'Pop',
-        tags: ['summer', 'upbeat', 'feel-good'],
-        duration: 210,
-        price: 1.99,
-        isFree: false,
-        playCount: 15420,
-        likeCount: 342,
-        createdAt: '2024-01-15T10:00:00Z',
-        owner: {
-          id: 'artist1',
-          name: 'Sarah Music',
-          username: 'sarahmusic',
-          avatar: 'https://images.unsplash.com/photo-1494790108755-2616b332de0b?w=150&h=150&fit=crop&crop=face'
-        }
-      },
-      {
-        id: '2',
-        title: 'Midnight Blues',
-        slug: 'midnight-blues',
-        description: 'Soulful blues for late night listening',
-        audioUrl: 'https://storage.example.com/tracks/midnight-blues.mp3',
-        genre: 'Blues',
-        tags: ['blues', 'soulful', 'night'],
-        duration: 195,
-        price: null,
-        isFree: true,
-        playCount: 8900,
-        likeCount: 156,
-        createdAt: '2024-01-10T14:30:00Z',
-        owner: {
-          id: 'artist2',
-          name: 'Blues Brother',
-          username: 'bluesbrother',
-          avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face'
-        }
-      },
-      {
-        id: '3',
-        title: 'Electronic Dreams',
-        slug: 'electronic-dreams',
-        description: 'Ambient electronic soundscape',
-        audioUrl: 'https://storage.example.com/tracks/electronic-dreams.mp3',
-        genre: 'Electronic',
-        tags: ['electronic', 'ambient', 'chill'],
-        duration: 240,
-        price: 2.49,
-        isFree: false,
-        playCount: 12300,
-        likeCount: 278,
-        createdAt: '2024-01-08T16:45:00Z',
-        owner: {
-          id: 'artist3',
-          name: 'Synth Master',
-          username: 'synthmaster',
-          avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop&crop=face'
-        }
-      }
-    ]
-
-    // Apply filters
-    let filteredTracks = mockTracks
-
-    if (genre) {
-      filteredTracks = filteredTracks.filter(track => 
-        track.genre.toLowerCase() === genre.toLowerCase()
-      )
+    const where: Prisma.TrackWhereInput = {
+      ...(genre ? { genre: { equals: genre, mode: 'insensitive' } } : {}),
+      ...(ownerId ? { ownerId } : {}),
+      ...(search
+        ? {
+            OR: [
+              { title: { contains: search, mode: 'insensitive' } },
+              { description: { contains: search, mode: 'insensitive' } },
+              { owner: { name: { contains: search, mode: 'insensitive' } } },
+            ],
+          }
+        : {}),
     }
 
-    if (search) {
-      filteredTracks = filteredTracks.filter(track =>
-        track.title.toLowerCase().includes(search.toLowerCase()) ||
-        track.description?.toLowerCase().includes(search.toLowerCase()) ||
-        track.owner.name.toLowerCase().includes(search.toLowerCase())
-      )
-    }
-
-    // Apply sorting
-    filteredTracks.sort((a, b) => {
-      let aValue, bValue
-      
-      switch (sortBy) {
-        case 'title':
-          aValue = a.title
-          bValue = b.title
-          break
-        case 'playCount':
-          aValue = a.playCount
-          bValue = b.playCount
-          break
-        case 'likeCount':
-          aValue = a.likeCount
-          bValue = b.likeCount
-          break
-        default:
-          aValue = new Date(a.createdAt).getTime()
-          bValue = new Date(b.createdAt).getTime()
-      }
-
-      if (sortOrder === 'asc') {
-        return aValue > bValue ? 1 : -1
-      } else {
-        return aValue < bValue ? 1 : -1
-      }
-    })
-
-    // Apply pagination
-    const startIndex = (page - 1) * limit
-    const endIndex = startIndex + limit
-    const paginatedTracks = filteredTracks.slice(startIndex, endIndex)
+    const [tracks, total] = await Promise.all([
+      prisma.track.findMany({
+        where,
+        include: {
+          owner: { select: { id: true, name: true, username: true, avatar: true } },
+        },
+        orderBy: { [sortBy]: sortOrder },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.track.count({ where }),
+    ])
 
     return NextResponse.json({
-      tracks: paginatedTracks,
+      tracks,
       pagination: {
         page,
         limit,
-        total: filteredTracks.length,
-        totalPages: Math.ceil(filteredTracks.length / limit),
-        hasNext: endIndex < filteredTracks.length,
-        hasPrev: page > 1
+        total,
+        totalPages: Math.ceil(total / limit),
+        hasNext: page * limit < total,
+        hasPrev: page > 1,
       }
     })
 
@@ -152,51 +71,78 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// Create a new track
+// Create a track from an already-uploaded audio URL (metadata-only path).
+// For uploading the audio file itself, see POST /api/music/upload.
 export async function POST(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    
+
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    if (!session.user.isArtist) {
-      return NextResponse.json({ error: 'Only artists can create tracks' }, { status: 403 })
+    if (!session.user.isCreator) {
+      return NextResponse.json({ error: 'Only creators can create tracks' }, { status: 403 })
     }
 
-    const { title, description, genre, tags, price, audioUrl, duration } = await req.json()
+    const { title, description, genre, tags, price, audioUrl, duration, isrc, rightsAttestation } = await req.json()
 
-    if (!title || !audioUrl) {
-      return NextResponse.json({ 
-        error: 'Title and audio URL are required' 
+    if (!title?.trim() || !audioUrl) {
+      return NextResponse.json({
+        error: 'Title and audio URL are required'
       }, { status: 400 })
     }
 
-    // Create track (mock implementation)
-    const track = {
-      id: `track_${Date.now()}`,
-      title,
-      slug: title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
-      description,
-      audioUrl,
-      genre,
-      tags: tags || [],
-      duration: duration || 180,
-      price: price || null,
-      isFree: !price || price === 0,
-      ownerId: session.user.id,
-      playCount: 0,
-      likeCount: 0,
-      createdAt: new Date(),
-      updatedAt: new Date()
+    if (!rightsAttestation) {
+      return NextResponse.json({
+        error: 'You must confirm you own or are licensed to distribute this recording.'
+      }, { status: 400 })
     }
+
+    if (isrc) {
+      const existingIsrc = await prisma.track.findUnique({ where: { isrc } })
+      if (existingIsrc) {
+        return NextResponse.json({
+          error: 'A track with this ISRC is already registered on the platform.'
+        }, { status: 409 })
+      }
+    }
+
+    const baseSlug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'track'
+    let slug = baseSlug
+    let suffix = 0
+    while (await prisma.track.findUnique({ where: { slug } })) {
+      suffix += 1
+      slug = `${baseSlug}-${suffix}`
+    }
+
+    const track = await prisma.track.create({
+      data: {
+        title: title.trim(),
+        slug,
+        description: description || null,
+        audioUrl,
+        genre: genre || null,
+        tags: Array.isArray(tags) ? tags : [],
+        duration: duration || 0,
+        price: price && price > 0 ? price : null,
+        isFree: !price || price <= 0,
+        ownerId: session.user.id,
+        isrc: isrc || null,
+        rightsAttested: true,
+        rightsAttestedAt: new Date(),
+      },
+    })
+
+    await prisma.event.create({
+      data: { type: 'track.uploaded', userId: session.user.id, trackId: track.id },
+    })
 
     return NextResponse.json({
       success: true,
       track,
       message: 'Track created successfully'
-    })
+    }, { status: 201 })
 
   } catch (error) {
     console.error('Failed to create track:', error)

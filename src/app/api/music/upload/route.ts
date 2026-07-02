@@ -1,69 +1,127 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+import { audioStorage } from '@/lib/storage'
+
+const ALLOWED_TYPES = ['audio/mp3', 'audio/mpeg', 'audio/wav', 'audio/flac', 'audio/x-flac']
+const MAX_SIZE_BYTES = 50 * 1024 * 1024 // 50MB
+
+function slugify(title: string) {
+  return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'track'
+}
+
+async function generateUniqueSlug(title: string) {
+  const base = slugify(title)
+  let slug = base
+  let suffix = 0
+
+  while (suffix < 25) {
+    const existing = await prisma.track.findUnique({ where: { slug } })
+    if (!existing) return slug
+    suffix += 1
+    slug = `${base}-${suffix}`
+  }
+
+  return `${base}-${Date.now().toString(36)}`
+}
 
 export async function POST(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    
+
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Check if user is an artist
-    if (!session.user.isArtist) {
-      return NextResponse.json({ error: 'Only artists can upload music' }, { status: 403 })
+    if (!session.user.isCreator) {
+      return NextResponse.json({ error: 'Only creators can upload music' }, { status: 403 })
     }
 
     const formData = await req.formData()
-    const audioFile = formData.get('audio') as File
-    const title = formData.get('title') as string
-    const description = formData.get('description') as string
-    const genre = formData.get('genre') as string
-    const tags = JSON.parse(formData.get('tags') as string || '[]')
-    const price = formData.get('price') as string
+    const audioFile = formData.get('audio') as File | null
+    const title = formData.get('title') as string | null
+    const description = formData.get('description') as string | null
+    const genre = formData.get('genre') as string | null
+    const tags = JSON.parse((formData.get('tags') as string) || '[]')
+    const price = formData.get('price') as string | null
+    const isrc = (formData.get('isrc') as string | null)?.trim() || null
+    const rightsAttestation = formData.get('rightsAttestation') === 'true'
 
-    if (!audioFile || !title) {
-      return NextResponse.json({ 
-        error: 'Audio file and title are required' 
+    if (!audioFile || !title?.trim()) {
+      return NextResponse.json({
+        error: 'Audio file and title are required'
       }, { status: 400 })
     }
 
-    // Validate file type
-    const allowedTypes = ['audio/mp3', 'audio/mpeg', 'audio/wav', 'audio/flac']
-    if (!allowedTypes.includes(audioFile.type)) {
-      return NextResponse.json({ 
-        error: 'Invalid file type. Only MP3, WAV, and FLAC files are allowed.' 
+    // No automated content-ID/audio-fingerprinting is wired up (would need
+    // a third-party service like ACRCloud or Audible Magic). This
+    // self-certification is the enforcement mechanism until that exists.
+    if (!rightsAttestation) {
+      return NextResponse.json({
+        error: 'You must confirm you own or are licensed to distribute this recording before uploading.'
       }, { status: 400 })
     }
 
-    // For now, simulate file upload - in production, you'd upload to cloud storage
-    const audioUrl = `https://storage.example.com/tracks/${Date.now()}-${audioFile.name}`
-    
-    // Create track record (mock implementation)
-    const track = {
-      id: `track_${Date.now()}`,
-      title,
-      slug: title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
-      description,
-      audioUrl,
-      genre,
-      tags,
-      price: price ? parseFloat(price) : null,
-      isFree: !price || parseFloat(price) === 0,
-      ownerId: session.user.id,
-      duration: 180, // Mock duration
-      playCount: 0,
-      likeCount: 0,
-      createdAt: new Date(),
-      updatedAt: new Date()
+    if (isrc) {
+      const existingIsrc = await prisma.track.findUnique({ where: { isrc } })
+      if (existingIsrc) {
+        return NextResponse.json({
+          error: 'A track with this ISRC is already registered on the platform.'
+        }, { status: 409 })
+      }
     }
+
+    if (!ALLOWED_TYPES.includes(audioFile.type)) {
+      return NextResponse.json({
+        error: 'Invalid file type. Only MP3, WAV, and FLAC files are allowed.'
+      }, { status: 400 })
+    }
+
+    if (audioFile.size > MAX_SIZE_BYTES) {
+      return NextResponse.json({
+        error: 'File is too large. Maximum size is 50MB.'
+      }, { status: 400 })
+    }
+
+    const buffer = Buffer.from(await audioFile.arrayBuffer())
+    const stored = await audioStorage.saveAudio(buffer, audioFile.type, session.user.id, audioFile.name)
+
+    const slug = await generateUniqueSlug(title)
+    const parsedPrice = price ? parseFloat(price) : null
+
+    const track = await prisma.track.create({
+      data: {
+        title: title.trim(),
+        slug,
+        description: description || null,
+        audioUrl: stored.url,
+        genre: genre || null,
+        tags: Array.isArray(tags) ? tags : [],
+        duration: stored.durationSeconds,
+        price: parsedPrice && parsedPrice > 0 ? parsedPrice : null,
+        isFree: !parsedPrice || parsedPrice <= 0,
+        ownerId: session.user.id,
+        isrc,
+        rightsAttested: true,
+        rightsAttestedAt: new Date(),
+      },
+    })
+
+    await prisma.event.create({
+      data: {
+        type: 'track.uploaded',
+        userId: session.user.id,
+        trackId: track.id,
+        properties: { sizeBytes: stored.sizeBytes, mimeType: stored.mimeType, isrc },
+      },
+    })
 
     return NextResponse.json({
       success: true,
       track,
       message: 'Track uploaded successfully'
-    })
+    }, { status: 201 })
 
   } catch (error) {
     console.error('Music upload failed:', error)

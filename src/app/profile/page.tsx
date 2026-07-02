@@ -200,7 +200,7 @@ export default function ProfilePage() {
                   >
                     Discover Music
                   </a>
-                  {session.user.isArtist && (
+                  {session.user.isCreator && (
                     <a
                       href="/artist"
                       className="block w-full px-4 py-2 text-center text-sm font-medium text-green-600 border border-green-600 rounded-md hover:bg-green-50"

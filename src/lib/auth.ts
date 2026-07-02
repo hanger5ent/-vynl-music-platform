@@ -1,9 +1,10 @@
 import { NextAuthOptions } from 'next-auth'
 import CredentialsProvider from 'next-auth/providers/credentials'
+import bcrypt from 'bcryptjs'
+import { prisma } from '@/lib/prisma'
 
 export const authOptions: NextAuthOptions = {
   providers: [
-    // Credentials provider for testing
     CredentialsProvider({
       name: "credentials",
       credentials: {
@@ -11,17 +12,28 @@ export const authOptions: NextAuthOptions = {
         password: { label: "Password", type: "password" }
       },
       async authorize(credentials) {
-        if (!credentials?.email) return null
-        
-        // For development - allow any email with password "password"
-        if (credentials.password === "password") {
-          return {
-            id: "1",
-            email: credentials.email,
-            name: credentials.email.split('@')[0],
-          }
+        if (!credentials?.email || !credentials?.password) return null
+
+        const user = await prisma.user.findUnique({
+          where: { email: credentials.email.toLowerCase() },
+        })
+
+        if (!user?.password) return null
+
+        const isValid = await bcrypt.compare(credentials.password, user.password)
+        if (!isValid) return null
+
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          username: user.username,
+          isCreator: user.isCreator,
+          isVerified: user.isVerified,
+          isAdmin: user.isAdmin,
+          bio: user.bio,
+          avatar: user.avatar,
         }
-        return null
       }
     }),
   ],
@@ -42,7 +54,7 @@ export const authOptions: NextAuthOptions = {
       if (session.user && token) {
         session.user.id = token.id as string
         session.user.username = token.username as string || session.user.email?.split('@')[0]
-        session.user.isArtist = token.isArtist as boolean || false
+        session.user.isCreator = token.isCreator as boolean || false
         session.user.isVerified = token.isVerified as boolean || false
         session.user.isAdmin = token.isAdmin as boolean || false
       }
@@ -51,10 +63,10 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id
-        token.username = user.name || user.email?.split('@')[0] || 'user'
-        token.isArtist = false
-        token.isVerified = false
-        token.isAdmin = false
+        token.username = user.username || user.email?.split('@')[0] || 'user'
+        token.isCreator = user.isCreator || false
+        token.isVerified = user.isVerified || false
+        token.isAdmin = user.isAdmin || false
       }
       return token
     },
