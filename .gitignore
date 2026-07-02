@@ -45,3 +45,7 @@ next-env.d.ts
 /src/generated/prisma
 
 .vercel
+
+# Local dev audio storage (swap for Mux/S3 in production)
+/public/uploads/*
+!/public/uploads/.gitkeep

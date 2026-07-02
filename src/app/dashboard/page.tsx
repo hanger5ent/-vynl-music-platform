@@ -90,12 +90,20 @@ export default function DashboardPage() {
               <p className="opacity-90">
                 Manage your music, track analytics, and connect with fans.
               </p>
-              <Link
-                href="/creator"
-                className="inline-block mt-4 bg-white text-purple-600 px-4 py-2 rounded-md hover:bg-gray-100 transition-colors"
-              >
-                Go to Creator Dashboard
-              </Link>
+              <div className="flex gap-3 mt-4">
+                <Link
+                  href="/creator"
+                  className="inline-block bg-white text-purple-600 px-4 py-2 rounded-md hover:bg-gray-100 transition-colors"
+                >
+                  Go to Creator Dashboard
+                </Link>
+                <Link
+                  href="/creator/studio"
+                  className="inline-block border border-white text-white px-4 py-2 rounded-md hover:bg-white/10 transition-colors"
+                >
+                  Upload a Track
+                </Link>
+              </div>
             </div>
           </div>
         )}
