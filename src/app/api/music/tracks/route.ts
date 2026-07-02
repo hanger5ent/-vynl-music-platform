@@ -85,12 +85,27 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Only creators can create tracks' }, { status: 403 })
     }
 
-    const { title, description, genre, tags, price, audioUrl, duration } = await req.json()
+    const { title, description, genre, tags, price, audioUrl, duration, isrc, rightsAttestation } = await req.json()
 
     if (!title?.trim() || !audioUrl) {
       return NextResponse.json({
         error: 'Title and audio URL are required'
       }, { status: 400 })
+    }
+
+    if (!rightsAttestation) {
+      return NextResponse.json({
+        error: 'You must confirm you own or are licensed to distribute this recording.'
+      }, { status: 400 })
+    }
+
+    if (isrc) {
+      const existingIsrc = await prisma.track.findUnique({ where: { isrc } })
+      if (existingIsrc) {
+        return NextResponse.json({
+          error: 'A track with this ISRC is already registered on the platform.'
+        }, { status: 409 })
+      }
     }
 
     const baseSlug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'track'
@@ -113,6 +128,9 @@ export async function POST(req: NextRequest) {
         price: price && price > 0 ? price : null,
         isFree: !price || price <= 0,
         ownerId: session.user.id,
+        isrc: isrc || null,
+        rightsAttested: true,
+        rightsAttestedAt: new Date(),
       },
     })
 

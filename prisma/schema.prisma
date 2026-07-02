@@ -72,6 +72,9 @@ model User {
   // Revenue ledger (creator earnings)
   revenueLedgerEntries RevenueLedger[]
 
+  // Royalty splits where this user is the registered rights holder
+  royaltySplitsHeld RoyaltySplit[] @relation("RoyaltySplitHolder")
+
   // Shop
   products       Product[] @relation("ProductSeller")
   orders         Order[]   @relation("OrderCustomer")
@@ -121,7 +124,18 @@ model Track {
   genre       String?
   tags        String[]
   lyrics      String?
-  
+
+  // Rights & royalty reporting
+  // ISRC: industry-standard recording identifier, required by PROs
+  // (ASCAP/BMI/SoundExchange) to match plays to a specific recording.
+  isrc              String?   @unique
+  // Self-certification captured at upload time in lieu of automated
+  // content-ID/audio-fingerprinting (not implemented — would require a
+  // third-party service like ACRCloud or Audible Magic).
+  rightsAttested    Boolean   @default(false)
+  rightsAttestedAt  DateTime?
+  royaltySplits     RoyaltySplit[]
+
   // Ownership
   ownerId     String
   owner       User     @relation("TrackOwner", fields: [ownerId], references: [id], onDelete: Cascade)
@@ -151,6 +165,39 @@ model Track {
   events      Event[]
 
   @@map("tracks")
+}
+
+// Registered rights/ownership split for a track — who gets credited and
+// what share, for royalty and PRO-reporting purposes. This records
+// ownership; it does not itself move money (see RevenueLedger for that).
+model RoyaltySplit {
+  id      String @id @default(cuid())
+  trackId String
+  track   Track  @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  role       RoyaltyHolderRole
+  // Percentage of this role's royalty pool held by this party, 0-100.
+  percentage Decimal @db.Decimal(5, 2)
+
+  // The rights holder, either a platform user or an off-platform contact
+  holderName  String
+  holderEmail String?
+  holderUserId String?
+  holderUser   User?  @relation("RoyaltySplitHolder", fields: [holderUserId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([trackId])
+  @@map("royalty_splits")
+}
+
+enum RoyaltyHolderRole {
+  SONGWRITER
+  PERFORMER
+  PRODUCER
+  PUBLISHER
+  OTHER
 }
 
 model Album {

@@ -45,11 +45,31 @@ export async function POST(req: NextRequest) {
     const genre = formData.get('genre') as string | null
     const tags = JSON.parse((formData.get('tags') as string) || '[]')
     const price = formData.get('price') as string | null
+    const isrc = (formData.get('isrc') as string | null)?.trim() || null
+    const rightsAttestation = formData.get('rightsAttestation') === 'true'
 
     if (!audioFile || !title?.trim()) {
       return NextResponse.json({
         error: 'Audio file and title are required'
       }, { status: 400 })
+    }
+
+    // No automated content-ID/audio-fingerprinting is wired up (would need
+    // a third-party service like ACRCloud or Audible Magic). This
+    // self-certification is the enforcement mechanism until that exists.
+    if (!rightsAttestation) {
+      return NextResponse.json({
+        error: 'You must confirm you own or are licensed to distribute this recording before uploading.'
+      }, { status: 400 })
+    }
+
+    if (isrc) {
+      const existingIsrc = await prisma.track.findUnique({ where: { isrc } })
+      if (existingIsrc) {
+        return NextResponse.json({
+          error: 'A track with this ISRC is already registered on the platform.'
+        }, { status: 409 })
+      }
     }
 
     if (!ALLOWED_TYPES.includes(audioFile.type)) {
@@ -82,6 +102,9 @@ export async function POST(req: NextRequest) {
         price: parsedPrice && parsedPrice > 0 ? parsedPrice : null,
         isFree: !parsedPrice || parsedPrice <= 0,
         ownerId: session.user.id,
+        isrc,
+        rightsAttested: true,
+        rightsAttestedAt: new Date(),
       },
     })
 
@@ -90,7 +113,7 @@ export async function POST(req: NextRequest) {
         type: 'track.uploaded',
         userId: session.user.id,
         trackId: track.id,
-        properties: { sizeBytes: stored.sizeBytes, mimeType: stored.mimeType },
+        properties: { sizeBytes: stored.sizeBytes, mimeType: stored.mimeType, isrc },
       },
     })
 

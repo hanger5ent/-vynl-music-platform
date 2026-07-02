@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
-import { Music, UploadCloud, Loader2, Play } from 'lucide-react'
+import { Music, UploadCloud, Loader2, Play, ChevronDown, ChevronUp, Download, ShieldCheck } from 'lucide-react'
+import { RoyaltySplitsManager } from '@/components/creator/RoyaltySplitsManager'
 
 interface StudioTrack {
   id: string
@@ -15,6 +16,8 @@ interface StudioTrack {
   playCount: number
   likeCount: number
   audioUrl: string
+  isrc: string | null
+  rightsAttested: boolean
   createdAt: string
 }
 
@@ -31,8 +34,10 @@ export default function CreatorStudioPage() {
   const [isLoadingTracks, setIsLoadingTracks] = useState(true)
   const [isUploading, setIsUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [form, setForm] = useState({ title: '', description: '', genre: '', price: '' })
+  const [form, setForm] = useState({ title: '', description: '', genre: '', price: '', isrc: '' })
   const [audioFile, setAudioFile] = useState<File | null>(null)
+  const [rightsAttestation, setRightsAttestation] = useState(false)
+  const [expandedTrackId, setExpandedTrackId] = useState<string | null>(null)
 
   const fetchTracks = useCallback(async (ownerId: string) => {
     setIsLoadingTracks(true)
@@ -54,7 +59,7 @@ export default function CreatorStudioPage() {
 
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!audioFile || !form.title.trim()) return
+    if (!audioFile || !form.title.trim() || !rightsAttestation) return
 
     setIsUploading(true)
     setError(null)
@@ -66,6 +71,8 @@ export default function CreatorStudioPage() {
       body.append('genre', form.genre)
       body.append('tags', JSON.stringify([]))
       if (form.price) body.append('price', form.price)
+      if (form.isrc) body.append('isrc', form.isrc)
+      body.append('rightsAttestation', 'true')
 
       const res = await fetch('/api/music/upload', { method: 'POST', body })
       const data = await res.json()
@@ -75,8 +82,9 @@ export default function CreatorStudioPage() {
         return
       }
 
-      setForm({ title: '', description: '', genre: '', price: '' })
+      setForm({ title: '', description: '', genre: '', price: '', isrc: '' })
       setAudioFile(null)
+      setRightsAttestation(false)
       if (session?.user?.id) await fetchTracks(session.user.id)
     } catch {
       setError('Upload failed. Please try again.')
@@ -178,11 +186,34 @@ export default function CreatorStudioPage() {
             />
           </div>
 
+          <input
+            type="text"
+            placeholder="ISRC (optional — needed for PRO royalty reporting)"
+            value={form.isrc}
+            onChange={(e) => setForm((f) => ({ ...f, isrc: e.target.value }))}
+            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
+          />
+
+          <label className="flex items-start gap-2 text-sm text-gray-600 bg-gray-50 rounded-md p-3">
+            <input
+              type="checkbox"
+              checked={rightsAttestation}
+              onChange={(e) => setRightsAttestation(e.target.checked)}
+              className="mt-0.5"
+              required
+            />
+            <span>
+              I confirm I own this recording or have the rights/license to distribute it. Uploads aren&apos;t
+              scanned automatically — this is a binding attestation, and misuse can result in takedown and
+              account suspension.
+            </span>
+          </label>
+
           {error && <div className="text-sm text-red-600">{error}</div>}
 
           <button
             type="submit"
-            disabled={isUploading}
+            disabled={isUploading || !rightsAttestation}
             className="inline-flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
           >
             {isUploading && <Loader2 className="w-4 h-4 animate-spin" />}
@@ -190,7 +221,15 @@ export default function CreatorStudioPage() {
           </button>
         </form>
 
-        <h2 className="font-semibold text-gray-900 mb-3">Your tracks</h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-semibold text-gray-900">Your tracks</h2>
+          <a
+            href="/api/creator/royalty-report?format=csv"
+            className="inline-flex items-center gap-1.5 text-sm text-purple-600 hover:text-purple-700"
+          >
+            <Download className="w-3.5 h-3.5" /> Royalty report (CSV)
+          </a>
+        </div>
         {isLoadingTracks ? (
           <div className="flex justify-center py-10 text-gray-400"><Loader2 className="w-5 h-5 animate-spin" /></div>
         ) : tracks.length === 0 ? (
@@ -204,9 +243,15 @@ export default function CreatorStudioPage() {
               <div key={track.id} className="bg-white rounded-lg border border-gray-200 p-4">
                 <div className="flex items-center justify-between mb-2">
                   <div>
-                    <div className="font-medium text-gray-900">{track.title}</div>
+                    <div className="font-medium text-gray-900 flex items-center gap-1.5">
+                      {track.title}
+                      {track.rightsAttested && (
+                        <ShieldCheck className="w-3.5 h-3.5 text-green-600" aria-label="Rights attested" />
+                      )}
+                    </div>
                     <div className="text-xs text-gray-500">
                       {track.genre || 'No genre'} &middot; {formatDuration(track.duration)} &middot; {track.playCount} plays &middot; {track.isFree ? 'Free' : `$${track.price}`}
+                      {track.isrc && <> &middot; ISRC {track.isrc}</>}
                     </div>
                   </div>
                   <Play className="w-4 h-4 text-gray-300" />
@@ -217,6 +262,14 @@ export default function CreatorStudioPage() {
                   onPlay={() => recordPlay(track.id)}
                   className="w-full h-10"
                 />
+                <button
+                  onClick={() => setExpandedTrackId(expandedTrackId === track.id ? null : track.id)}
+                  className="mt-2 text-xs text-gray-500 hover:text-purple-600 flex items-center gap-1"
+                >
+                  {expandedTrackId === track.id ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  Rights & royalty splits
+                </button>
+                {expandedTrackId === track.id && <RoyaltySplitsManager trackId={track.id} />}
               </div>
             ))}
           </div>
