@@ -18,6 +18,8 @@ model User {
   name          String?
   bio           String?
   avatar        String?
+  // Hashed with bcrypt. Null for accounts that only ever use an OAuth provider.
+  password      String?
   isCreator     Boolean   @default(false)
   isVerified    Boolean   @default(false)
   isAdmin       Boolean   @default(false)
