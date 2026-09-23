@@ -67,6 +67,15 @@ export async function GET(
         : null,
     ])
 
+    let likedTrackIds = new Set<string>()
+    if (session?.user) {
+      const likes = await prisma.like.findMany({
+        where: { userId: session.user.id, trackId: { in: recentTracks.map((t) => t.id) } },
+        select: { trackId: true },
+      })
+      likedTrackIds = new Set(likes.map((l) => l.trackId!))
+    }
+
     return NextResponse.json({
       artist: {
         id: artist.id,
@@ -87,6 +96,7 @@ export async function GET(
         recentTracks: recentTracks.map((t) => ({
           ...t,
           price: t.price ? Number(t.price) : null,
+          likedByMe: likedTrackIds.has(t.id),
         })),
         albums: albums.map((a) => ({
           ...a,

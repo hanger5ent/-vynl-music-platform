@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
-import { Play, Users, TrendingUp, Calendar, MapPin, Globe, ShoppingCart, Crown, Loader2, ChevronUp, MessageCircle } from 'lucide-react'
+import { Play, Users, TrendingUp, Calendar, MapPin, Globe, ShoppingCart, Crown, Loader2, ChevronUp, MessageCircle, Heart } from 'lucide-react'
 import Link from 'next/link'
 import { TrackComments } from '@/components/tracks/TrackComments'
 
@@ -16,6 +16,7 @@ interface ArtistTrack {
   likeCount: number
   price: number | null
   isFree: boolean
+  likedByMe: boolean
 }
 
 interface ArtistAlbum {
@@ -122,6 +123,19 @@ export default function ArtistProfilePage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
     }).catch(() => {})
+  }
+
+  const toggleLike = async (trackId: string) => {
+    if (!artist) return
+    const res = await fetch(`/api/music/tracks/${trackId}/like`, { method: 'POST' })
+    if (!res.ok) return
+    const data = await res.json()
+    setArtist({
+      ...artist,
+      recentTracks: artist.recentTracks.map((t) =>
+        t.id === trackId ? { ...t, likedByMe: data.liked, likeCount: data.likeCount } : t
+      ),
+    })
   }
 
   const buyTrack = async (track: ArtistTrack) => {
@@ -312,6 +326,12 @@ export default function ArtistProfilePage() {
                               className="p-2 hover:bg-gray-200 rounded-full transition-colors"
                             >
                               <Play className="w-4 h-4 text-gray-600" />
+                            </button>
+                            <button
+                              onClick={() => toggleLike(track.id)}
+                              className="p-2 hover:bg-gray-200 rounded-full transition-colors"
+                            >
+                              <Heart className={`w-4 h-4 ${track.likedByMe ? 'text-red-500 fill-current' : 'text-gray-600'}`} />
                             </button>
                             <button
                               onClick={() => setExpandedCommentsId(expandedCommentsId === track.id ? null : track.id)}

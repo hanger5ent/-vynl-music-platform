@@ -57,8 +57,17 @@ export async function GET(req: NextRequest) {
       prisma.track.count({ where }),
     ])
 
+    let likedTrackIds = new Set<string>()
+    if (session?.user) {
+      const likes = await prisma.like.findMany({
+        where: { userId: session.user.id, trackId: { in: tracks.map((t) => t.id) } },
+        select: { trackId: true },
+      })
+      likedTrackIds = new Set(likes.map((l) => l.trackId!))
+    }
+
     return NextResponse.json({
-      tracks,
+      tracks: tracks.map((t) => ({ ...t, likedByMe: likedTrackIds.has(t.id) })),
       pagination: {
         page,
         limit,

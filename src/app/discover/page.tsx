@@ -12,7 +12,8 @@ import {
   Users,
   Star,
   Sparkles,
-  Loader2
+  Loader2,
+  Heart
 } from 'lucide-react'
 
 interface DiscoverTrack {
@@ -23,6 +24,7 @@ interface DiscoverTrack {
   playCount: number
   likeCount: number
   audioUrl: string | null
+  likedByMe: boolean
   owner: { id: string; name: string | null; username: string; avatar: string | null }
 }
 
@@ -96,6 +98,13 @@ export default function DiscoverPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
     }).catch(() => {})
+  }
+
+  const toggleLike = async (trackId: string) => {
+    const res = await fetch(`/api/music/tracks/${trackId}/like`, { method: 'POST' })
+    if (!res.ok) return
+    const data = await res.json()
+    setTracks((prev) => prev.map((t) => t.id === trackId ? { ...t, likedByMe: data.liked, likeCount: data.likeCount } : t))
   }
 
   return (
@@ -213,6 +222,12 @@ export default function DiscoverPage() {
                           </div>
                         </div>
 
+                        <button
+                          onClick={() => toggleLike(track.id)}
+                          className="p-2 hover:bg-gray-100 rounded-lg transition-colors shrink-0"
+                        >
+                          <Heart className={`h-5 w-5 ${track.likedByMe ? 'text-red-500 fill-current' : 'text-gray-400'}`} />
+                        </button>
                         <button
                           onClick={() => { setNowPlaying(track); recordPlay(track.id) }}
                           className="p-2 hover:bg-gray-100 rounded-lg transition-colors shrink-0"

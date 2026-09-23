@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
 // Search across the platform
 export async function GET(req: NextRequest) {
   try {
+    const session = await getServerSession(authOptions)
     const { searchParams } = new URL(req.url)
     const query = searchParams.get('q')
     const type = searchParams.get('type') || 'all' // all, tracks, artists, albums, playlists
@@ -105,8 +108,17 @@ export async function GET(req: NextRequest) {
         : Promise.resolve([]),
     ])
 
+    let likedTrackIds = new Set<string>()
+    if (session?.user && tracks.length > 0) {
+      const likes = await prisma.like.findMany({
+        where: { userId: session.user.id, trackId: { in: tracks.map((t) => t.id) } },
+        select: { trackId: true },
+      })
+      likedTrackIds = new Set(likes.map((l) => l.trackId!))
+    }
+
     const results: Record<string, unknown[]> = {}
-    if (wantsAll || type === 'tracks') results.tracks = tracks
+    if (wantsAll || type === 'tracks') results.tracks = tracks.map((t) => ({ ...t, likedByMe: likedTrackIds.has(t.id) }))
     if (wantsAll || type === 'artists') {
       results.artists = artists.map((a) => ({
         id: a.id,
