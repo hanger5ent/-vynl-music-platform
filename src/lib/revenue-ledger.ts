@@ -10,6 +10,7 @@ interface RecordEarningInput {
   currency?: string
   purchaseId?: string
   subscriptionId?: string
+  orderId?: string
   stripePaymentIntentId?: string
   stripeTransferId?: string
   description?: string
@@ -21,7 +22,7 @@ interface RecordEarningInput {
 // source of truth; totalRevenue is a denormalized read-optimization derived
 // from them.
 export async function recordCreatorEarning(tx: TxClient, input: RecordEarningInput) {
-  const { creatorId, type, grossAmount, currency = 'usd', purchaseId, subscriptionId, stripePaymentIntentId, stripeTransferId, description } = input
+  const { creatorId, type, grossAmount, currency = 'usd', purchaseId, subscriptionId, orderId, stripePaymentIntentId, stripeTransferId, description } = input
   const { platformFee, netAmount } = splitGrossAmount(grossAmount)
 
   await tx.revenueLedger.create({
@@ -33,6 +34,7 @@ export async function recordCreatorEarning(tx: TxClient, input: RecordEarningInp
       platformFeePercent: PLATFORM_FEE_PERCENT,
       purchaseId,
       subscriptionId,
+      orderId,
       stripePaymentIntentId,
       stripeTransferId,
       description,
@@ -47,6 +49,7 @@ export async function recordCreatorEarning(tx: TxClient, input: RecordEarningInp
       currency,
       purchaseId,
       subscriptionId,
+      orderId,
       stripePaymentIntentId,
       description: description ? `Platform fee on: ${description}` : 'Platform fee',
     },
@@ -67,6 +70,7 @@ interface RecordRefundInput {
   currency?: string
   purchaseId?: string
   subscriptionId?: string
+  orderId?: string
   stripePaymentIntentId?: string
   description?: string
 }
@@ -75,7 +79,7 @@ interface RecordRefundInput {
 // totalRevenue is brought back down by the net amount they'd been credited
 // (gross minus the platform fee, which Stripe also returns to the payer).
 export async function recordRefund(tx: TxClient, input: RecordRefundInput) {
-  const { creatorId, amount, currency = 'usd', purchaseId, subscriptionId, stripePaymentIntentId, description } = input
+  const { creatorId, amount, currency = 'usd', purchaseId, subscriptionId, orderId, stripePaymentIntentId, description } = input
   const { netAmount } = splitGrossAmount(amount)
 
   await tx.revenueLedger.create({
@@ -86,6 +90,7 @@ export async function recordRefund(tx: TxClient, input: RecordRefundInput) {
       currency,
       purchaseId,
       subscriptionId,
+      orderId,
       stripePaymentIntentId,
       description,
     },

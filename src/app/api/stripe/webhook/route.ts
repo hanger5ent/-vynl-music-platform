@@ -198,6 +198,80 @@ async function recordTrackOrAlbumPurchase(opts: {
   })
 }
 
+interface ProductLineItem {
+  refId: string
+  quantity: number
+  unitAmount: number
+  totalAmount: number
+}
+
+async function recordProductOrder(opts: {
+  userId: string
+  items: ProductLineItem[]
+  sessionId: string
+  paymentIntentId?: string
+}) {
+  const { userId, items, sessionId, paymentIntentId } = opts
+
+  const products = await prisma.product.findMany({
+    where: { id: { in: items.map((i) => i.refId) } },
+    select: { id: true, sellerId: true },
+  })
+  const productById = new Map(products.map((p) => [p.id, p]))
+  const validItems = items.filter((i) => productById.has(i.refId))
+  if (validItems.length === 0) {
+    console.error(`checkout.session.completed ${sessionId}: no known products among ${items.map((i) => i.refId).join(', ')}`)
+    return
+  }
+
+  // create-payment.ts requires every item in a cart to share one artistId,
+  // so this checkout's line items all belong to one seller.
+  const sellerId = productById.get(validItems[0].refId)!.sellerId
+  const subtotal = validItems.reduce((sum, i) => sum + i.totalAmount, 0)
+
+  await prisma.$transaction(async (tx) => {
+    if (paymentIntentId) {
+      const existing = await tx.order.findFirst({ where: { stripePaymentIntentId: paymentIntentId } })
+      if (existing) return
+    }
+
+    const order = await tx.order.create({
+      data: {
+        customerId: userId,
+        subtotal,
+        total: subtotal,
+        stripeSessionId: sessionId,
+        stripePaymentIntentId: paymentIntentId,
+        paymentStatus: 'COMPLETED',
+        orderStatus: 'CONFIRMED',
+        items: {
+          create: validItems.map((i) => ({
+            productId: i.refId,
+            quantity: i.quantity,
+            price: i.unitAmount,
+          })),
+        },
+      },
+    })
+
+    for (const item of validItems) {
+      await tx.product.update({
+        where: { id: item.refId },
+        data: { stock: { decrement: item.quantity } },
+      })
+    }
+
+    await recordCreatorEarning(tx, {
+      creatorId: sellerId,
+      type: 'PRODUCT_PURCHASE',
+      grossAmount: subtotal,
+      orderId: order.id,
+      stripePaymentIntentId: paymentIntentId,
+      description: `Shop order: ${validItems.length} item${validItems.length > 1 ? 's' : ''}`,
+    })
+  })
+}
+
 async function handlePaymentCheckoutCompleted(session: Stripe.Checkout.Session) {
   if (!stripe) return
   const userId = session.metadata?.userId
@@ -213,24 +287,26 @@ async function handlePaymentCheckoutCompleted(session: Stripe.Checkout.Session) 
     limit: 100,
   })
 
+  const productItems: ProductLineItem[] = []
+
   for (const item of lineItems.data) {
     const product = item.price?.product
     if (!product || typeof product === 'string' || 'deleted' in product) continue
 
     const { kind, refId } = product.metadata || {}
     const amount = (item.amount_total ?? 0) / 100
+    const quantity = item.quantity ?? 1
     if (!refId || amount <= 0) continue
 
     if (kind === 'track' || kind === 'album') {
       await recordTrackOrAlbumPurchase({ kind, refId, userId, amount, sessionId: session.id, paymentIntentId })
     } else {
-      // Shop merchandise purchased through the generic cart isn't
-      // reconciled into an Order here: no pending Order row exists to
-      // attach it to (the cart/checkout UI that would create one ahead of
-      // payment hasn't been built), and merch isn't part of the creator
-      // RevenueLedger in this schema. Flagged rather than silently dropped.
-      console.log(`checkout.session.completed ${session.id}: no reconciliation for line item kind="${kind || 'unknown'}" (shop/product purchases aren't wired to Order records yet)`)
+      productItems.push({ refId, quantity, unitAmount: amount / quantity, totalAmount: amount })
     }
+  }
+
+  if (productItems.length > 0) {
+    await recordProductOrder({ userId, items: productItems, sessionId: session.id, paymentIntentId })
   }
 }
 
@@ -257,27 +333,49 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
   const paymentIntentId = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id
   if (!paymentIntentId) return
 
-  const purchase = await prisma.purchase.findFirst({ where: { stripePaymentIntentId: paymentIntentId } })
-  if (!purchase || purchase.status === 'REFUNDED') return
-
   const refundAmount = (charge.amount_refunded ?? 0) / 100
   if (refundAmount <= 0) return
 
-  const earningEntry = await prisma.revenueLedger.findFirst({
-    where: { purchaseId: purchase.id, type: { in: ['TRACK_PURCHASE', 'ALBUM_PURCHASE'] } },
-  })
-  if (!earningEntry) return
-
-  await prisma.$transaction(async (tx) => {
-    await tx.purchase.update({ where: { id: purchase.id }, data: { status: 'REFUNDED' } })
-    await recordRefund(tx, {
-      creatorId: earningEntry.creatorId,
-      amount: refundAmount,
-      purchaseId: purchase.id,
-      stripePaymentIntentId: paymentIntentId,
-      description: 'Refund issued',
+  const purchase = await prisma.purchase.findFirst({ where: { stripePaymentIntentId: paymentIntentId } })
+  if (purchase) {
+    if (purchase.status === 'REFUNDED') return
+    const earningEntry = await prisma.revenueLedger.findFirst({
+      where: { purchaseId: purchase.id, type: { in: ['TRACK_PURCHASE', 'ALBUM_PURCHASE'] } },
     })
-  })
+    if (!earningEntry) return
+
+    await prisma.$transaction(async (tx) => {
+      await tx.purchase.update({ where: { id: purchase.id }, data: { status: 'REFUNDED' } })
+      await recordRefund(tx, {
+        creatorId: earningEntry.creatorId,
+        amount: refundAmount,
+        purchaseId: purchase.id,
+        stripePaymentIntentId: paymentIntentId,
+        description: 'Refund issued',
+      })
+    })
+    return
+  }
+
+  const order = await prisma.order.findFirst({ where: { stripePaymentIntentId: paymentIntentId } })
+  if (order) {
+    if (order.paymentStatus === 'REFUNDED') return
+    const earningEntry = await prisma.revenueLedger.findFirst({
+      where: { orderId: order.id, type: 'PRODUCT_PURCHASE' },
+    })
+    if (!earningEntry) return
+
+    await prisma.$transaction(async (tx) => {
+      await tx.order.update({ where: { id: order.id }, data: { paymentStatus: 'REFUNDED', orderStatus: 'CANCELLED' } })
+      await recordRefund(tx, {
+        creatorId: earningEntry.creatorId,
+        amount: refundAmount,
+        orderId: order.id,
+        stripePaymentIntentId: paymentIntentId,
+        description: 'Refund issued',
+      })
+    })
+  }
 }
 
 export async function POST(req: NextRequest) {

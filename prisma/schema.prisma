@@ -408,6 +408,8 @@ model RevenueLedger {
   purchase       Purchase?            @relation(fields: [purchaseId], references: [id])
   subscriptionId String?
   subscription   CreatorSubscription? @relation(fields: [subscriptionId], references: [id])
+  orderId        String?
+  order          Order?               @relation(fields: [orderId], references: [id])
 
   // Stripe references
   stripeTransferId      String?
@@ -425,6 +427,7 @@ enum RevenueLedgerEntryType {
   SUBSCRIPTION_PAYMENT
   TRACK_PURCHASE
   ALBUM_PURCHASE
+  PRODUCT_PURCHASE
   PLATFORM_FEE
   PAYOUT
   REFUND
@@ -744,15 +747,19 @@ model Order {
   shippingAddress Json?
   
   // Payment
-  stripeSessionId String?
+  stripeSessionId       String?
+  stripePaymentIntentId String?
   paymentStatus   PaymentStatus @default(PENDING)
-  
+
   // Order status
   orderStatus OrderStatus @default(PENDING)
-  
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  
+
+  // Revenue ledger entries generated from this order
+  revenueLedgerEntries RevenueLedger[]
+
   @@map("orders")
 }
 

@@ -28,7 +28,6 @@ export async function POST(req: NextRequest) {
     // destination, so a cart mixing items from different artists can't be
     // paid out correctly in one session.
     const distinctArtistIds = new Set<string>(items.map((item) => item.artistId).filter(Boolean))
-    const hasTrackOrAlbumItem = items.some((item) => item.kind === 'track' || item.kind === 'album')
 
     if (distinctArtistIds.size > 1) {
       return NextResponse.json({
@@ -42,14 +41,35 @@ export async function POST(req: NextRequest) {
       const creatorProfile = await prisma.creatorProfile.findUnique({ where: { userId: onlyArtistId } })
       if (creatorProfile?.stripeAccountId && creatorProfile.stripeChargesEnabled) {
         connectDestination = creatorProfile.stripeAccountId
-      } else if (hasTrackOrAlbumItem) {
-        // Merch-only carts fall back to the platform account (payout for
-        // shop orders isn't wired up yet — see the webhook handler), but a
-        // track/album purchase with nowhere to send the creator's share
-        // must be blocked, not silently pocketed by the platform.
+      } else {
+        // Nowhere for this seller's share to go — block rather than let the
+        // platform account silently pocket 100% of a payment it can't pay out.
         return NextResponse.json({
-          error: 'This artist hasn\'t finished setting up payouts yet, so they can\'t sell tracks or albums.'
+          error: 'This artist hasn\'t finished setting up payouts yet, so they can\'t sell tracks, albums, or merchandise.'
         }, { status: 400 })
+      }
+    }
+
+    // Best-effort stock check — not transactionally locked, so a race
+    // between two concurrent checkouts for the last unit is still possible,
+    // but this catches the common case of an already-sold-out item.
+    const productItemIds = items.filter((item) => item.kind === 'product').map((item) => item.productId)
+    if (productItemIds.length > 0) {
+      const products = await prisma.product.findMany({
+        where: { id: { in: productItemIds } },
+        select: { id: true, name: true, stock: true, isActive: true },
+      })
+      const productsById = new Map(products.map((p) => [p.id, p]))
+
+      for (const item of items) {
+        if (item.kind !== 'product') continue
+        const product = productsById.get(item.productId)
+        if (!product || !product.isActive) {
+          return NextResponse.json({ error: `Product ${item.name || item.productId} is no longer available` }, { status: 400 })
+        }
+        if (product.stock < (item.quantity || 1)) {
+          return NextResponse.json({ error: `Not enough stock for ${product.name}` }, { status: 400 })
+        }
       }
     }
 
