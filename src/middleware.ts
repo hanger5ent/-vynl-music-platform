@@ -15,13 +15,21 @@ export default withAuth(
         }
         
         // Allow access to public pages
-        if (req.nextUrl.pathname === '/' || 
+        if (req.nextUrl.pathname === '/' ||
             req.nextUrl.pathname.startsWith('/api/auth/') ||
             req.nextUrl.pathname.startsWith('/_next/') ||
             req.nextUrl.pathname.startsWith('/favicon.ico')) {
           return true
         }
-        
+
+        // Stripe calls this server-to-server with no user session — it has
+        // its own auth (the stripe-signature header, verified inside the
+        // route), so it can't be gated behind a login redirect like the
+        // rest of the app.
+        if (req.nextUrl.pathname === '/api/stripe/webhook') {
+          return true
+        }
+
         // Require authentication for protected routes
         return !!token
       },

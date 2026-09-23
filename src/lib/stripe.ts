@@ -18,6 +18,20 @@ export const STRIPE_CONFIG = {
   mode: 'subscription' as const,
 }
 
+// Platform's cut of gross revenue, recorded as a PLATFORM_FEE ledger entry
+// alongside every earning entry. Matches the 85-90% creator payout the
+// marketing site (for-artists page) advertises — 15% keeps that promise at
+// its floor rather than over- or under-selling it. This is bookkeeping only:
+// no Stripe Connect destination charge/transfer moves money automatically,
+// since creators don't yet have a Connect onboarding flow.
+export const PLATFORM_FEE_PERCENT = 15
+
+export function splitGrossAmount(grossAmount: number) {
+  const platformFee = Math.round(grossAmount * (PLATFORM_FEE_PERCENT / 100) * 100) / 100
+  const netAmount = Math.round((grossAmount - platformFee) * 100) / 100
+  return { grossAmount, platformFee, netAmount }
+}
+
 // Subscription tier configurations
 export const SUBSCRIPTION_TIERS = {
   basic: {

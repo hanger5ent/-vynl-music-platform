@@ -51,13 +51,14 @@ export async function POST(req: NextRequest) {
     // Prepare line items
     const lineItems = []
     for (const item of items) {
-      const { productId, quantity = 1, name, price, description, artistId } = item
+      const { productId, quantity = 1, name, price, description, artistId, kind } = item
+      const itemKind = kind === 'track' || kind === 'album' ? kind : 'product'
 
       // Create or get price for this product
       let stripePrice
       try {
         const prices = await stripe.prices.list({
-          lookup_keys: [`product_${productId}`],
+          lookup_keys: [`${itemKind}_${productId}`],
           limit: 1,
         })
 
@@ -69,7 +70,8 @@ export async function POST(req: NextRequest) {
             name: name || `Product ${productId}`,
             description: description || `Product from artist ${artistId}`,
             metadata: {
-              productId,
+              kind: itemKind,
+              refId: productId,
               artistId: artistId || '',
             },
           })
@@ -79,9 +81,10 @@ export async function POST(req: NextRequest) {
             unit_amount: Math.round(price * 100), // Convert to cents
             currency: 'usd',
             product: product.id,
-            lookup_key: `product_${productId}`,
+            lookup_key: `${itemKind}_${productId}`,
             metadata: {
-              productId,
+              kind: itemKind,
+              refId: productId,
               artistId: artistId || '',
             },
           })
@@ -94,8 +97,8 @@ export async function POST(req: NextRequest) {
 
       } catch (error) {
         console.error(`Error creating price for product ${productId}:`, error)
-        return NextResponse.json({ 
-          error: `Failed to create price for product ${productId}` 
+        return NextResponse.json({
+          error: `Failed to create price for product ${productId}`
         }, { status: 500 })
       }
     }
