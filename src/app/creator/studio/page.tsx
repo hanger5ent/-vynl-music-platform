@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
-import { Music, UploadCloud, Loader2, Play, ChevronDown, ChevronUp, Download, ShieldCheck } from 'lucide-react'
+import { Music, UploadCloud, Loader2, Play, ChevronDown, ChevronUp, Download, ShieldCheck, Clock, AlertCircle } from 'lucide-react'
 import { RoyaltySplitsManager } from '@/components/creator/RoyaltySplitsManager'
 
 interface StudioTrack {
@@ -15,9 +15,11 @@ interface StudioTrack {
   isFree: boolean
   playCount: number
   likeCount: number
-  audioUrl: string
+  audioUrl: string | null
   isrc: string | null
   rightsAttested: boolean
+  processingStatus: 'PROCESSING' | 'READY' | 'ERRORED'
+  processingError: string | null
   createdAt: string
 }
 
@@ -56,6 +58,16 @@ export default function CreatorStudioPage() {
   useEffect(() => {
     if (session?.user?.id) fetchTracks(session.user.id)
   }, [session?.user?.id, fetchTracks])
+
+  // While any track is still being processed (Mux transcoding), poll for
+  // its status so it flips to playable without a manual page refresh.
+  useEffect(() => {
+    if (!session?.user?.id) return
+    if (!tracks.some((t) => t.processingStatus === 'PROCESSING')) return
+
+    const interval = setInterval(() => fetchTracks(session.user.id), 5000)
+    return () => clearInterval(interval)
+  }, [session?.user?.id, tracks, fetchTracks])
 
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -256,12 +268,24 @@ export default function CreatorStudioPage() {
                   </div>
                   <Play className="w-4 h-4 text-gray-300" />
                 </div>
-                <audio
-                  controls
-                  src={track.audioUrl}
-                  onPlay={() => recordPlay(track.id)}
-                  className="w-full h-10"
-                />
+                {track.processingStatus === 'READY' && track.audioUrl ? (
+                  <audio
+                    controls
+                    src={track.audioUrl}
+                    onPlay={() => recordPlay(track.id)}
+                    className="w-full h-10"
+                  />
+                ) : track.processingStatus === 'ERRORED' ? (
+                  <div className="flex items-center gap-1.5 text-sm text-red-600 bg-red-50 rounded-md px-3 py-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    {track.processingError || 'Processing failed. Try re-uploading this track.'}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5 text-sm text-amber-700 bg-amber-50 rounded-md px-3 py-2">
+                    <Clock className="w-4 h-4 shrink-0 animate-pulse" />
+                    Processing audio — this can take a minute or two.
+                  </div>
+                )}
                 <button
                   onClick={() => setExpandedTrackId(expandedTrackId === track.id ? null : track.id)}
                   className="mt-2 text-xs text-gray-500 hover:text-purple-600 flex items-center gap-1"

@@ -22,11 +22,11 @@ export default withAuth(
           return true
         }
 
-        // Stripe calls this server-to-server with no user session — it has
-        // its own auth (the stripe-signature header, verified inside the
-        // route), so it can't be gated behind a login redirect like the
+        // Stripe and Mux call these server-to-server with no user session —
+        // each has its own auth (a signature header, verified inside the
+        // route), so they can't be gated behind a login redirect like the
         // rest of the app.
-        if (req.nextUrl.pathname === '/api/stripe/webhook') {
+        if (req.nextUrl.pathname === '/api/stripe/webhook' || req.nextUrl.pathname === '/api/mux/webhook') {
           return true
         }
 

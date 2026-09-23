@@ -105,6 +105,8 @@ export async function POST(req: NextRequest) {
         isrc,
         rightsAttested: true,
         rightsAttestedAt: new Date(),
+        muxUploadId: stored.provider === 'mux' ? stored.externalId : null,
+        processingStatus: stored.url ? 'READY' : 'PROCESSING',
       },
     })
 
@@ -113,14 +115,14 @@ export async function POST(req: NextRequest) {
         type: 'track.uploaded',
         userId: session.user.id,
         trackId: track.id,
-        properties: { sizeBytes: stored.sizeBytes, mimeType: stored.mimeType, isrc },
+        properties: { sizeBytes: stored.sizeBytes, mimeType: stored.mimeType, isrc, provider: stored.provider },
       },
     })
 
     return NextResponse.json({
       success: true,
       track,
-      message: 'Track uploaded successfully'
+      message: stored.url ? 'Track uploaded successfully' : 'Track uploaded — processing audio now'
     }, { status: 201 })
 
   } catch (error) {

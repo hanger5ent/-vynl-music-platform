@@ -120,8 +120,17 @@ model Track {
   duration    Int      // in seconds
   
   // File storage
-  audioUrl    String
+  // audioUrl is null until processing finishes — see processingStatus.
+  audioUrl    String?
   waveformData Json?
+
+  // Mux ingestion (see src/lib/storage.ts) — null/READY when using local
+  // disk storage instead, which has no async processing step.
+  muxUploadId       String?              @unique
+  muxAssetId        String?              @unique
+  muxPlaybackId     String?
+  processingStatus  TrackProcessingStatus @default(READY)
+  processingError   String?
   
   // Metadata
   genre       String?
@@ -193,6 +202,12 @@ model RoyaltySplit {
 
   @@index([trackId])
   @@map("royalty_splits")
+}
+
+enum TrackProcessingStatus {
+  PROCESSING
+  READY
+  ERRORED
 }
 
 enum RoyaltyHolderRole {
