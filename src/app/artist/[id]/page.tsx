@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
-import { Play, Users, TrendingUp, Calendar, MapPin, Globe, ShoppingCart, Crown, Loader2 } from 'lucide-react'
+import { Play, Users, TrendingUp, Calendar, MapPin, Globe, ShoppingCart, Crown, Loader2, ChevronUp, MessageCircle } from 'lucide-react'
 import Link from 'next/link'
+import { TrackComments } from '@/components/tracks/TrackComments'
 
 interface ArtistTrack {
   id: string
@@ -75,6 +76,7 @@ export default function ArtistProfilePage() {
   const [isFollowLoading, setIsFollowLoading] = useState(false)
   const [buyingId, setBuyingId] = useState<string | null>(null)
   const [nowPlaying, setNowPlaying] = useState<ArtistTrack | null>(null)
+  const [expandedCommentsId, setExpandedCommentsId] = useState<string | null>(null)
 
   const fetchArtist = useCallback(async () => {
     setIsLoading(true)
@@ -293,33 +295,42 @@ export default function ArtistProfilePage() {
                     <div className="p-8 text-center text-gray-500">No tracks yet.</div>
                   ) : (
                     artist.recentTracks.map((track, index) => (
-                      <div key={track.id} className="flex items-center p-4 border-b border-gray-100 last:border-b-0 hover:bg-gray-50 transition-colors">
-                        <div className="w-8 text-center text-gray-500 text-sm">{index + 1}</div>
-                        <div className="flex-1 mx-4">
-                          <h4 className="font-medium text-gray-900">{track.title}</h4>
-                          <p className="text-sm text-gray-500">{formatNumber(track.playCount)} plays</p>
-                        </div>
-                        <div className="text-sm text-gray-500 mr-4">{formatDuration(track.duration)}</div>
-                        <div className="text-sm font-medium text-gray-900 mr-4">
-                          {track.isFree ? 'Free' : `$${track.price?.toFixed(2)}`}
-                        </div>
-                        <div className="flex space-x-2">
-                          <button
-                            onClick={() => { setNowPlaying(track); recordPlay(track.id) }}
-                            className="p-2 hover:bg-gray-200 rounded-full transition-colors"
-                          >
-                            <Play className="w-4 h-4 text-gray-600" />
-                          </button>
-                          {!track.isFree && track.price && (
+                      <div key={track.id} className="p-4 border-b border-gray-100 last:border-b-0 hover:bg-gray-50 transition-colors">
+                        <div className="flex items-center">
+                          <div className="w-8 text-center text-gray-500 text-sm">{index + 1}</div>
+                          <div className="flex-1 mx-4">
+                            <h4 className="font-medium text-gray-900">{track.title}</h4>
+                            <p className="text-sm text-gray-500">{formatNumber(track.playCount)} plays</p>
+                          </div>
+                          <div className="text-sm text-gray-500 mr-4">{formatDuration(track.duration)}</div>
+                          <div className="text-sm font-medium text-gray-900 mr-4">
+                            {track.isFree ? 'Free' : `$${track.price?.toFixed(2)}`}
+                          </div>
+                          <div className="flex space-x-2">
                             <button
-                              onClick={() => buyTrack(track)}
-                              disabled={buyingId === track.id}
-                              className="px-4 py-1.5 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                              onClick={() => { setNowPlaying(track); recordPlay(track.id) }}
+                              className="p-2 hover:bg-gray-200 rounded-full transition-colors"
                             >
-                              {buyingId === track.id ? '...' : 'Buy'}
+                              <Play className="w-4 h-4 text-gray-600" />
                             </button>
-                          )}
+                            <button
+                              onClick={() => setExpandedCommentsId(expandedCommentsId === track.id ? null : track.id)}
+                              className="p-2 hover:bg-gray-200 rounded-full transition-colors"
+                            >
+                              {expandedCommentsId === track.id ? <ChevronUp className="w-4 h-4 text-gray-600" /> : <MessageCircle className="w-4 h-4 text-gray-600" />}
+                            </button>
+                            {!track.isFree && track.price && (
+                              <button
+                                onClick={() => buyTrack(track)}
+                                disabled={buyingId === track.id}
+                                className="px-4 py-1.5 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                              >
+                                {buyingId === track.id ? '...' : 'Buy'}
+                              </button>
+                            )}
+                          </div>
                         </div>
+                        {expandedCommentsId === track.id && <TrackComments trackId={track.id} />}
                       </div>
                     ))
                   )}

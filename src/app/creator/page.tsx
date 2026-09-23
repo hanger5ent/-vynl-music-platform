@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import { MarketingHub } from '@/components/creator/MarketingHub'
+import { AnalyticsDashboard } from '@/components/creator/AnalyticsDashboard'
 import Link from 'next/link'
 import { 
   Crown, 
@@ -407,23 +408,22 @@ export default function CreatorDashboard() {
         {/* Marketing Tab */}
         {activeTab === 'marketing' && <MarketingHub />}
 
+        {/* Analytics Tab */}
+        {activeTab === 'analytics' && <AnalyticsDashboard userId={session?.user?.id} />}
+
         {/* Other tabs placeholder */}
-        {(activeTab === 'analytics' || activeTab === 'content' || activeTab === 'subscribers') && (
+        {(activeTab === 'content' || activeTab === 'subscribers') && (
           <div className="bg-white rounded-xl shadow-sm p-12 text-center">
             <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              {activeTab === 'analytics' ? <BarChart3 className="h-8 w-8 text-gray-400" /> : 
-               activeTab === 'subscribers' ? <Users className="h-8 w-8 text-gray-400" /> :
+              {activeTab === 'subscribers' ? <Users className="h-8 w-8 text-gray-400" /> :
                <Music className="h-8 w-8 text-gray-400" />}
             </div>
             <h3 className="text-lg font-medium text-gray-900 mb-2">
-              {activeTab === 'analytics' ? 'Analytics Dashboard' : 
-               activeTab === 'subscribers' ? 'Subscriber Management' :
+              {activeTab === 'subscribers' ? 'Subscriber Management' :
                'Content Management'}
             </h3>
             <p className="text-gray-600">
-              {activeTab === 'analytics' 
-                ? 'Detailed analytics and insights coming soon.' 
-                : activeTab === 'subscribers'
+              {activeTab === 'subscribers'
                 ? 'Manage your subscribers and communication tools.'
                 : 'Upload and manage your music content here.'
               }

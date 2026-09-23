@@ -340,16 +340,22 @@ model Comment {
   content String
   userId  String
   user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
   // Polymorphic comments
   trackId String?
   track   Track? @relation(fields: [trackId], references: [id], onDelete: Cascade)
   albumId String?
   album   Album? @relation(fields: [albumId], references: [id], onDelete: Cascade)
-  
+
+  // One level of threading — a reply belongs to a top-level comment.
+  parentId String?
+  parent   Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies  Comment[] @relation("CommentReplies")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
+
+  @@index([trackId])
   @@map("comments")
 }
 
