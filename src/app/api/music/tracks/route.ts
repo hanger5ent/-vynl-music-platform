@@ -14,6 +14,7 @@ const SORT_FIELDS: Record<string, string> = {
 // Get all tracks with filtering and pagination
 export async function GET(req: NextRequest) {
   try {
+    const session = await getServerSession(authOptions)
     const { searchParams } = new URL(req.url)
     const genre = searchParams.get('genre')
     const search = searchParams.get('search')
@@ -23,9 +24,15 @@ export async function GET(req: NextRequest) {
     const sortBy = SORT_FIELDS[searchParams.get('sortBy') || 'createdAt'] || 'createdAt'
     const sortOrder = searchParams.get('sortOrder') === 'asc' ? 'asc' : 'desc'
 
+    // A track that's still processing (or failed) has no playable audioUrl —
+    // only its owner should see it in that state. Everyone else only ever
+    // sees READY tracks.
+    const isOwnerViewingOwnCatalog = ownerId && session?.user?.id === ownerId
+
     const where: Prisma.TrackWhereInput = {
       ...(genre ? { genre: { equals: genre, mode: 'insensitive' } } : {}),
       ...(ownerId ? { ownerId } : {}),
+      ...(isOwnerViewingOwnCatalog ? {} : { processingStatus: 'READY' }),
       ...(search
         ? {
             OR: [
