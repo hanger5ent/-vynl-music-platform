@@ -1,24 +1,90 @@
 'use client'
 
 import { useSession } from 'next-auth/react'
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Music, Plus, Search, Play, MoreHorizontal, Lock, Users, Heart } from 'lucide-react'
+import { Music, Plus, Search, Lock, Users, Loader2 } from 'lucide-react'
+
+interface PlaylistSummary {
+  id: string
+  title: string
+  description: string | null
+  coverImage: string | null
+  isPublic: boolean
+  trackCount: number
+  totalDuration: number
+  createdAt: string
+}
+
+function formatDuration(seconds: number) {
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  if (h > 0) return `${h}h ${m}m`
+  return `${m}m`
+}
 
 export default function PlaylistsPage() {
-  const { data: session } = useSession()
+  const { data: session, status } = useSession()
   const [searchQuery, setSearchQuery] = useState('')
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [playlists, setPlaylists] = useState<PlaylistSummary[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [form, setForm] = useState({ title: '', description: '', isPublic: true })
+  const [isCreating, setIsCreating] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const fetchPlaylists = useCallback(async () => {
+    setIsLoading(true)
+    try {
+      const res = await fetch('/api/playlists')
+      if (!res.ok) throw new Error('Failed to load playlists')
+      const data = await res.json()
+      setPlaylists(data.playlists || [])
+    } catch {
+      setError('Could not load your playlists.')
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (session?.user) fetchPlaylists()
+  }, [session?.user, fetchPlaylists])
+
+  const createPlaylist = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!form.title.trim()) return
+    setIsCreating(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/playlists', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error || 'Could not create playlist')
+        return
+      }
+      setForm({ title: '', description: '', isPublic: true })
+      setShowCreateModal(false)
+      await fetchPlaylists()
+    } finally {
+      setIsCreating(false)
+    }
+  }
+
+  if (status === 'loading') {
+    return <div className="min-h-screen flex items-center justify-center text-gray-400"><Loader2 className="w-6 h-6 animate-spin" /></div>
+  }
 
   if (!session) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-gray-900 mb-4">Please sign in</h1>
-          <Link
-            href="/auth/signin"
-            className="bg-indigo-600 text-white px-6 py-3 rounded-lg hover:bg-indigo-700 transition-colors"
-          >
+          <Link href="/auth/signin" className="bg-indigo-600 text-white px-6 py-3 rounded-lg hover:bg-indigo-700 transition-colors">
             Sign In
           </Link>
         </div>
@@ -26,52 +92,14 @@ export default function PlaylistsPage() {
     )
   }
 
-  // Mock playlists data
-  const playlists = [
-    {
-      id: 1,
-      name: "My Favorites",
-      description: "All my favorite tracks in one place",
-      trackCount: 47,
-      duration: "3h 12m",
-      isPublic: false,
-      createdAt: "2023-11-01",
-      coverUrl: "/api/placeholder/200/200",
-      isLiked: true
-    },
-    {
-      id: 2,
-      name: "Workout Vibes",
-      description: "High energy tracks for the gym",
-      trackCount: 23,
-      duration: "1h 45m",
-      isPublic: true,
-      createdAt: "2023-10-15",
-      coverUrl: "/api/placeholder/200/200",
-      isLiked: false
-    },
-    {
-      id: 3,
-      name: "Chill Evening",
-      description: "Relaxing music for unwinding",
-      trackCount: 31,
-      duration: "2h 18m",
-      isPublic: false,
-      createdAt: "2023-09-20",
-      coverUrl: "/api/placeholder/200/200",
-      isLiked: true
-    }
-  ]
-
-  const filteredPlaylists = playlists.filter(playlist =>
-    playlist.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    playlist.description.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredPlaylists = playlists.filter((p) =>
+    p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (p.description || '').toLowerCase().includes(searchQuery.toLowerCase())
   )
 
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pt-24">
-        {/* Header */}
         <div className="mb-8 flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">My Playlists</h1>
@@ -86,7 +114,6 @@ export default function PlaylistsPage() {
           </button>
         </div>
 
-        {/* Search */}
         <div className="mb-6">
           <div className="relative max-w-md">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
@@ -100,8 +127,11 @@ export default function PlaylistsPage() {
           </div>
         </div>
 
-        {/* Playlists Grid */}
-        {filteredPlaylists.length === 0 ? (
+        {error && <div className="mb-6 text-sm text-red-600">{error}</div>}
+
+        {isLoading ? (
+          <div className="flex justify-center py-16 text-gray-400"><Loader2 className="w-6 h-6 animate-spin" /></div>
+        ) : filteredPlaylists.length === 0 ? (
           <div className="text-center py-12">
             <Music className="mx-auto h-12 w-12 text-gray-400 mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">No playlists found</h3>
@@ -117,60 +147,43 @@ export default function PlaylistsPage() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {filteredPlaylists.map((playlist) => (
-              <div key={playlist.id} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow group">
-                <div className="relative">
-                  <img
-                    src={playlist.coverUrl}
-                    alt={playlist.name}
-                    className="w-full h-48 object-cover"
-                  />
-                  <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all flex items-center justify-center">
-                    <button className="opacity-0 group-hover:opacity-100 transition-opacity bg-indigo-600 text-white p-3 rounded-full hover:bg-indigo-700">
-                      <Play className="h-5 w-5" />
-                    </button>
-                  </div>
-                  <div className="absolute top-2 right-2 flex gap-2">
+              <Link
+                key={playlist.id}
+                href={`/playlists/${playlist.id}`}
+                className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow group"
+              >
+                <div className="relative h-48 bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center">
+                  {playlist.coverImage ? (
+                    <img src={playlist.coverImage} alt={playlist.title} className="w-full h-full object-cover" />
+                  ) : (
+                    <Music className="h-12 w-12 text-white/70" />
+                  )}
+                  <div className="absolute top-2 right-2">
                     {playlist.isPublic ? (
                       <span className="bg-green-500 text-white px-2 py-1 rounded-full text-xs flex items-center gap-1">
-                        <Users className="h-3 w-3" />
-                        Public
+                        <Users className="h-3 w-3" /> Public
                       </span>
                     ) : (
-                      <span className="bg-gray-500 text-white px-2 py-1 rounded-full text-xs flex items-center gap-1">
-                        <Lock className="h-3 w-3" />
-                        Private
+                      <span className="bg-gray-700 text-white px-2 py-1 rounded-full text-xs flex items-center gap-1">
+                        <Lock className="h-3 w-3" /> Private
                       </span>
                     )}
                   </div>
                 </div>
                 <div className="p-4">
-                  <div className="flex items-start justify-between mb-2">
-                    <h3 className="font-semibold text-gray-900 truncate flex-1">{playlist.name}</h3>
-                    <div className="flex items-center gap-1 ml-2">
-                      <button className={`p-1 transition-colors ${playlist.isLiked ? 'text-red-500' : 'text-gray-400 hover:text-red-500'}`}>
-                        <Heart className="h-4 w-4" fill={playlist.isLiked ? 'currentColor' : 'none'} />
-                      </button>
-                      <button className="p-1 text-gray-400 hover:text-gray-600 transition-colors">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                  <p className="text-sm text-gray-600 mb-3 line-clamp-2">{playlist.description}</p>
+                  <h3 className="font-semibold text-gray-900 truncate mb-1">{playlist.title}</h3>
+                  {playlist.description && <p className="text-sm text-gray-600 mb-3 line-clamp-2">{playlist.description}</p>}
                   <div className="flex items-center justify-between text-xs text-gray-500">
-                    <span>{playlist.trackCount} tracks</span>
-                    <span>{playlist.duration}</span>
-                  </div>
-                  <div className="mt-2 text-xs text-gray-400">
-                    Created {new Date(playlist.createdAt).toLocaleDateString()}
+                    <span>{playlist.trackCount} track{playlist.trackCount !== 1 ? 's' : ''}</span>
+                    <span>{formatDuration(playlist.totalDuration)}</span>
                   </div>
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
         )}
 
-        {/* Stats */}
-        <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="mt-12 grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
             <div className="flex items-center">
               <Music className="h-8 w-8 text-indigo-600 mr-3" />
@@ -184,27 +197,17 @@ export default function PlaylistsPage() {
             <div className="flex items-center">
               <Users className="h-8 w-8 text-green-500 mr-3" />
               <div>
-                <p className="text-2xl font-bold text-gray-900">{playlists.filter(p => p.isPublic).length}</p>
+                <p className="text-2xl font-bold text-gray-900">{playlists.filter((p) => p.isPublic).length}</p>
                 <p className="text-gray-600">Public Playlists</p>
-              </div>
-            </div>
-          </div>
-          <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-            <div className="flex items-center">
-              <Heart className="h-8 w-8 text-red-500 mr-3" />
-              <div>
-                <p className="text-2xl font-bold text-gray-900">{playlists.reduce((sum, p) => sum + p.trackCount, 0)}</p>
-                <p className="text-gray-600">Total Tracks</p>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Create Playlist Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-md w-full p-6">
+          <form onSubmit={createPlaylist} className="bg-white rounded-lg max-w-md w-full p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Create New Playlist</h3>
             <div className="space-y-4">
               <div>
@@ -212,7 +215,10 @@ export default function PlaylistsPage() {
                 <input
                   type="text"
                   placeholder="My Awesome Playlist"
+                  value={form.title}
+                  onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  required
                 />
               </div>
               <div>
@@ -220,31 +226,40 @@ export default function PlaylistsPage() {
                 <textarea
                   placeholder="Tell people what this playlist is about..."
                   rows={3}
+                  value={form.description}
+                  onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 />
               </div>
               <div>
                 <label className="flex items-center">
-                  <input type="checkbox" className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+                  <input
+                    type="checkbox"
+                    checked={form.isPublic}
+                    onChange={(e) => setForm((f) => ({ ...f, isPublic: e.target.checked }))}
+                    className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  />
                   <span className="ml-2 text-sm text-gray-700">Make this playlist public</span>
                 </label>
               </div>
             </div>
             <div className="flex justify-end gap-3 mt-6">
               <button
+                type="button"
                 onClick={() => setShowCreateModal(false)}
                 className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
               >
                 Cancel
               </button>
               <button
-                onClick={() => setShowCreateModal(false)}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                type="submit"
+                disabled={isCreating}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50"
               >
-                Create Playlist
+                {isCreating ? 'Creating...' : 'Create Playlist'}
               </button>
             </div>
-          </div>
+          </form>
         </div>
       )}
     </div>
