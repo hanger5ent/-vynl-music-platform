@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { stripe, SUBSCRIPTION_TIERS } from '@/lib/stripe'
+import { stripe, SUBSCRIPTION_TIERS, PLATFORM_FEE_PERCENT } from '@/lib/stripe'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
 
 export async function POST(req: NextRequest) {
   try {
@@ -24,6 +25,14 @@ export async function POST(req: NextRequest) {
     }
 
     const tierConfig = SUBSCRIPTION_TIERS[tier as keyof typeof SUBSCRIPTION_TIERS]
+
+    const creatorProfile = await prisma.creatorProfile.findUnique({ where: { userId: artistId } })
+    if (!creatorProfile?.stripeAccountId || !creatorProfile.stripeChargesEnabled) {
+      return NextResponse.json({
+        error: 'This creator hasn\'t finished setting up payouts yet, so they can\'t accept subscriptions.'
+      }, { status: 400 })
+    }
+    const creatorStripeAccountId = creatorProfile.stripeAccountId
 
     // Create or get customer
     let customer
@@ -115,6 +124,10 @@ export async function POST(req: NextRequest) {
             artistId,
             tier,
             userId: session.user.id || '',
+          },
+          application_fee_percent: PLATFORM_FEE_PERCENT,
+          transfer_data: {
+            destination: creatorStripeAccountId,
           },
         },
       })

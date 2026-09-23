@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { stripe } from '@/lib/stripe'
+import { stripe, PLATFORM_FEE_PERCENT } from '@/lib/stripe'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
 
 export async function POST(req: NextRequest) {
   try {
@@ -21,6 +22,35 @@ export async function POST(req: NextRequest) {
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ error: 'Invalid items' }, { status: 400 })
+    }
+
+    // A Checkout Session can only route funds to a single Connect
+    // destination, so a cart mixing items from different artists can't be
+    // paid out correctly in one session.
+    const distinctArtistIds = new Set<string>(items.map((item) => item.artistId).filter(Boolean))
+    const hasTrackOrAlbumItem = items.some((item) => item.kind === 'track' || item.kind === 'album')
+
+    if (distinctArtistIds.size > 1) {
+      return NextResponse.json({
+        error: 'All items in a single checkout must belong to the same artist.'
+      }, { status: 400 })
+    }
+
+    let connectDestination: string | undefined
+    if (distinctArtistIds.size === 1) {
+      const [onlyArtistId] = distinctArtistIds
+      const creatorProfile = await prisma.creatorProfile.findUnique({ where: { userId: onlyArtistId } })
+      if (creatorProfile?.stripeAccountId && creatorProfile.stripeChargesEnabled) {
+        connectDestination = creatorProfile.stripeAccountId
+      } else if (hasTrackOrAlbumItem) {
+        // Merch-only carts fall back to the platform account (payout for
+        // shop orders isn't wired up yet — see the webhook handler), but a
+        // track/album purchase with nowhere to send the creator's share
+        // must be blocked, not silently pocketed by the platform.
+        return NextResponse.json({
+          error: 'This artist hasn\'t finished setting up payouts yet, so they can\'t sell tracks or albums.'
+        }, { status: 400 })
+      }
     }
 
     // Create or get customer
@@ -50,9 +80,12 @@ export async function POST(req: NextRequest) {
 
     // Prepare line items
     const lineItems = []
+    let totalCents = 0
+
     for (const item of items) {
       const { productId, quantity = 1, name, price, description, artistId, kind } = item
       const itemKind = kind === 'track' || kind === 'album' ? kind : 'product'
+      totalCents += Math.round(price * 100) * quantity
 
       // Create or get price for this product
       let stripePrice
@@ -119,9 +152,17 @@ export async function POST(req: NextRequest) {
         shipping_address_collection: {
           allowed_countries: ['US', 'CA', 'GB', 'AU', 'DE', 'FR'], // Add more as needed
         },
+        ...(connectDestination && {
+          payment_intent_data: {
+            application_fee_amount: Math.round(totalCents * (PLATFORM_FEE_PERCENT / 100)),
+            transfer_data: {
+              destination: connectDestination,
+            },
+          },
+        }),
       })
 
-      return NextResponse.json({ 
+      return NextResponse.json({
         checkoutUrl: checkoutSession.url,
         sessionId: checkoutSession.id
       })

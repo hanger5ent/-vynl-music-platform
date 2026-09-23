@@ -95,8 +95,11 @@ model CreatorProfile {
   socialLinks Json?
 
   // Revenue settings (Stripe Connect Express)
-  stripeAccountId String?
-  payoutEmail     String?
+  stripeAccountId         String?
+  stripeChargesEnabled    Boolean  @default(false)
+  stripePayoutsEnabled    Boolean  @default(false)
+  stripeDetailsSubmitted  Boolean  @default(false)
+  payoutEmail             String?
 
   // Statistics
   totalStreams    Int      @default(0)

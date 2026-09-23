@@ -242,6 +242,17 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
   }
 }
 
+async function handleAccountUpdated(account: Stripe.Account) {
+  await prisma.creatorProfile.updateMany({
+    where: { stripeAccountId: account.id },
+    data: {
+      stripeChargesEnabled: account.charges_enabled,
+      stripePayoutsEnabled: account.payouts_enabled,
+      stripeDetailsSubmitted: account.details_submitted,
+    },
+  })
+}
+
 async function handleChargeRefunded(charge: Stripe.Charge) {
   const paymentIntentId = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id
   if (!paymentIntentId) return
@@ -308,6 +319,9 @@ export async function POST(req: NextRequest) {
         break
       case 'charge.refunded':
         await handleChargeRefunded(event.data.object as Stripe.Charge)
+        break
+      case 'account.updated':
+        await handleAccountUpdated(event.data.object as Stripe.Account)
         break
       default:
         // Unhandled event type — acknowledge so Stripe doesn't retry it.
