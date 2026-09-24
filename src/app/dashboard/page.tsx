@@ -119,7 +119,7 @@ export default function DashboardPage() {
               Access your purchased tracks, albums, and saved music.
             </p>
             <Link
-              href="/dashboard/library"
+              href="/library"
               className="inline-block bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 transition-colors"
             >
               View Library
@@ -136,7 +136,7 @@ export default function DashboardPage() {
               Create and manage your custom playlists.
             </p>
             <Link
-              href="/dashboard/playlists"
+              href="/playlists"
               className="inline-block bg-pink-600 text-white px-4 py-2 rounded-md hover:bg-pink-700 transition-colors"
             >
               My Playlists
@@ -153,7 +153,7 @@ export default function DashboardPage() {
               Artists and creators you follow.
             </p>
             <Link
-              href="/dashboard/following"
+              href="/following"
               className="inline-block bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition-colors"
             >
               View Following
@@ -170,7 +170,7 @@ export default function DashboardPage() {
               Your purchase history and downloads.
             </p>
             <Link
-              href="/dashboard/purchases"
+              href="/purchases"
               className="inline-block bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700 transition-colors"
             >
               View Purchases
@@ -204,7 +204,7 @@ export default function DashboardPage() {
               Manage your account and preferences.
             </p>
             <Link
-              href="/dashboard/settings"
+              href="/settings"
               className="inline-block bg-yellow-600 text-white px-4 py-2 rounded-md hover:bg-yellow-700 transition-colors"
             >
               Account Settings
