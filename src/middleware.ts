@@ -14,6 +14,13 @@ export default withAuth({
   pages: {
     signIn: '/auth/signin',
   },
+  callbacks: {
+    // A suspended account still has a validly-signed token (suspension is
+    // re-checked from the DB in the jwt callback on every request - see
+    // src/lib/auth.ts), so it must be checked explicitly here rather than
+    // just requiring any token to exist.
+    authorized: ({ token }) => !!token && !token.isSuspended,
+  },
 })
 
 export const config = {

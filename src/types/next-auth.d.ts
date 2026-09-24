@@ -37,6 +37,7 @@ declare module 'next-auth/jwt' {
     isCreator?: boolean
     isVerified?: boolean
     isAdmin?: boolean
+    isSuspended?: boolean
     bio?: string | null
     avatar?: string | null
   }
