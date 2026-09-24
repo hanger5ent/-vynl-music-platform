@@ -10,7 +10,8 @@
     "start": "next start",
     "lint": "next lint",
     "deploy": "vercel --prod",
-    "deploy:preview": "vercel"
+    "deploy:preview": "vercel",
+    "bootstrap-admin": "node scripts/bootstrap-admin.js"
   },
   "dependencies": {
     "@headlessui/react": "^2.2.4",
