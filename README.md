@@ -1,311 +1,158 @@
 # VYNL - Music Streaming Platform
 
-A modern, production-ready music streaming platform with **Direct-to-Consumer (D2C)** support and powerful **community building** features. Built with Next.js 14, TypeScript, and Prisma.
+An invite-only, direct-to-consumer music platform where creators sell tracks/albums, run subscription tiers, and get paid via Stripe Connect. Built with Next.js 14 (App Router), TypeScript, and Prisma/PostgreSQL.
 
-🌐 **Live Demo**: [https://vynl-6o3covpkk-vynl-app.vercel.app](https://vynl-6o3covpkk-vynl-app.vercel.app)
+## Features
 
-## 🚀 Features
+### Fans
+- Discover and follow creators, stream tracks, like/comment
+- Build and manage playlists (public and private)
+- Buy tracks/albums/merchandise, subscribe to creators' tiers
+- Library, following list, and purchase history
 
-### Core Features
-- **🎵 Music Streaming**: High-quality audio playback with advanced player controls
-- **💰 Direct-to-Consumer Sales**: Artists sell directly to fans with transparent pricing
-- **👥 Community Building**: Social features, forums, and fan engagement tools
-- **📈 Artist Analytics**: Comprehensive insights for artists and creators
-- **🔍 Advanced Search**: Discover music by genre, artist, or mood
-- **🎨 Modern UI**: Beautiful, responsive design with Tailwind CSS
-- **🔐 Secure Authentication**: NextAuth.js with multiple providers
-- **📧 Email Integration**: Resend API for notifications and marketing
+### Creators
+- Upload tracks (transcoded and hosted via Mux; falls back to local disk storage in dev when Mux isn't configured - see Deployment)
+- Customize the name/price/features of each subscription tier, or turn a tier off
+- Run a merch shop, view real revenue/subscriber analytics
+- Get paid out via Stripe Connect (Express accounts)
+- Request paid ad placement (admin-reviewed; there's no ad-serving system yet - see Admin below)
+- Apply for creator access if not already invited
 
-### D2C Features
-- **Artist Dashboard**: Upload, manage, and sell music directly
-- **Payment Processing**: Secure payments with Stripe integration
-- **Digital Downloads**: Secure file delivery system
-- **Revenue Analytics**: Track sales, streams, and earnings
-- **Fan Funding**: Crowdfunding for new releases
-- **Creator Tools**: Advanced campaign management and subscriber tools
+### Admin
+- Review and approve/reject creator applications and ad requests
+- User management: search, suspend/reactivate, promote/demote creator or admin status
+- Content moderation: take down or restore any track, with a reason
+- Adjust the platform's revenue-share fee percentage
+- Real platform stats and activity feed (no fabricated metrics)
 
-### Community Features
-- **Social Profiles**: Follow artists and create collections
-- **Comments & Reviews**: Engage with tracks and albums
-- **Community Forums**: Genre-based discussions
-- **Live Events**: Virtual concerts and listening parties
-- **Direct Messaging**: Artist-fan communication
-- **Beta Testing Program**: User feedback and feature testing
+### Invite system
+- Existing creators/admins can invite new creators or admins by email
+- **Note**: `/auth/signup` itself currently has no invite-code check, so despite the platform being invite-only in concept, anyone can create a fan account today.
 
-## 🛠 Tech Stack
+## Tech Stack
 
-- **Frontend**: Next.js 14.2.16, TypeScript, Tailwind CSS
-- **Backend**: Next.js API Routes, Prisma ORM 6.12.0
-- **Database**: PostgreSQL (ready for production)
-- **Authentication**: NextAuth.js with Prisma adapter
-- **Payments**: Stripe integration (configured)
-- **Email**: Resend API for transactional emails
-- **UI Components**: Headless UI 2.2.4, Heroicons, Lucide Icons
-- **Forms**: React Hook Form with Zod validation
-- **Deployment**: Vercel (optimized build pipeline)
+- **Framework**: Next.js 14.2.16 (App Router), TypeScript, Tailwind CSS
+- **Database**: PostgreSQL via Prisma ORM (schema managed with `prisma db push`, not migrations - see Deployment)
+- **Auth**: NextAuth.js, credentials provider, JWT sessions
+- **Payments**: Stripe (Checkout + Connect Express for creator payouts)
+- **Audio hosting**: Mux (transcoding, adaptive playback); local disk storage as a dev-only fallback
+- **Email**: Resend (no real fallback - see Deployment)
+- **Deployment target**: Vercel
 
-## 📦 Installation & Setup
+## Local Setup
 
 ### Prerequisites
-- **Node.js** 18+ and npm
-- **PostgreSQL** database (local or cloud)
-- **Stripe** account for payments
-- **Resend** account for emails
+- Node.js 18+
+- A PostgreSQL database (local or cloud)
+- Optional for full functionality: Stripe account, Mux account, Resend account
 
-### Quick Start
+### Steps
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/hanger5ent/vynl-music-platform.git
-   cd vynl-music-platform
-   ```
-
-2. **Install dependencies**
+1. Install dependencies:
    ```bash
    npm install
    ```
 
-3. **Set up environment variables**
-   Create `.env.local` file:
+2. Create `.env` in the project root:
    ```bash
-   # Database
-   DATABASE_URL="postgresql://username:password@localhost:5432/vynl"
-   
-   # NextAuth
-   NEXTAUTH_SECRET="your-nextauth-secret"
+   DATABASE_URL="postgresql://user:password@localhost:5432/vynl_dev"
    NEXTAUTH_URL="http://localhost:3000"
-   
-   # Stripe (optional for testing)
-   STRIPE_PUBLISHABLE_KEY="pk_test_..."
-   STRIPE_SECRET_KEY="sk_test_..."
-   
-   # Email (Resend)
-   RESEND_API_KEY="re_..."
+   NEXTAUTH_SECRET="generate with: openssl rand -base64 32"
+
+   # Optional in dev - features degrade gracefully without these:
+   STRIPE_SECRET_KEY=""
+   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=""
+   STRIPE_WEBHOOK_SECRET=""
+   MUX_TOKEN_ID=""
+   MUX_TOKEN_SECRET=""
+   MUX_WEBHOOK_SECRET=""
+   RESEND_API_KEY=""
    EMAIL_FROM="noreply@yourdomain.com"
    ```
 
-4. **Set up the database**
+3. Push the schema and generate the Prisma client:
    ```bash
-   npx prisma generate
    npx prisma db push
    ```
 
-5. **Run the development server**
+4. Run the dev server:
    ```bash
    npm run dev
    ```
+   Open [http://localhost:3000](http://localhost:3000).
 
-   Open [http://localhost:3000](http://localhost:3000) in your browser.
-
-6. **Build for production**
+5. Bootstrap your first admin account (see Deployment - same script works locally):
    ```bash
-   npm run build
-   npm start
+   node scripts/bootstrap-admin.js you@example.com
    ```
 
-## 🏗 Project Structure
+## Deployment (Vercel)
+
+```bash
+npm run deploy       # vercel --prod
+npm run deploy:preview   # vercel (preview deployment)
+```
+Or connect the GitHub repo to Vercel for deploys on push. `prisma generate` already runs in `postinstall`/`prebuild`, so no extra build configuration is needed.
+
+### Required environment variables
+
+| Variable | Notes |
+|---|---|
+| `DATABASE_URL` | Production Postgres connection string |
+| `NEXTAUTH_URL` | Exact production domain, `https://...` |
+| `NEXTAUTH_SECRET` | Real random secret, not a dev placeholder |
+| `STRIPE_SECRET_KEY` | Live secret key (`sk_live_...`) |
+| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Live publishable key (`pk_live_...`) |
+| `STRIPE_WEBHOOK_SECRET` | From a webhook endpoint at `/api/stripe/webhook` |
+| `MUX_TOKEN_ID` / `MUX_TOKEN_SECRET` | **Required in production** - see gotcha below |
+| `MUX_WEBHOOK_SECRET` | From a webhook endpoint at `/api/mux/webhook` |
+| `RESEND_API_KEY` | **Required for real email delivery** - see gotcha below |
+| `EMAIL_FROM` | A verified sending address on your Resend domain |
+
+**Stripe webhook events to subscribe to**: `checkout.session.completed`, `invoice.paid`, `invoice.payment_failed`, `customer.subscription.updated`, `customer.subscription.deleted`, `charge.refunded`, `account.updated`.
+
+**Mux webhook events**: `video.upload.asset_created`, `video.upload.errored`, `video.asset.ready`, `video.asset.errored`, `video.asset.static_renditions.ready`, `video.asset.static_renditions.errored`.
+
+**Stripe dashboard, one-time**: Connect must be enabled on your account (creator payouts use Express accounts).
+
+### Gotchas
+
+- **Mux is not optional in production.** Without `MUX_TOKEN_ID`/`MUX_TOKEN_SECRET`, uploads fall back to writing to `public/uploads/audio` on local disk - Vercel's deployment bundle is read-only, so that write fails or doesn't persist. Configure Mux before real users upload tracks.
+- **Without `RESEND_API_KEY`, email silently no-ops.** There's no real SMTP fallback; `sendEmail` just logs to the server console and reports success. Welcome emails, invites, application decisions, and payment/subscription confirmations would all "succeed" while never being delivered.
+- **Bootstrapping your first admin** requires one script run, since granting `isAdmin` through the app itself requires an existing admin (chicken-and-egg on a fresh database):
+  ```bash
+  DATABASE_URL="<prod-url>" node scripts/bootstrap-admin.js you@example.com
+  ```
+  It refuses to run if any admin already exists, so it can't be reused as a standing backdoor - further admins go through the normal invite flow.
+- **Schema changes use `prisma db push`, not migrations.** There's no `prisma/migrations` history. That's fine pre-launch, but before you have real user data at stake, switch to `prisma migrate dev` (tracked migration files) + `prisma migrate deploy` in your deploy step - `db push` has no history and can silently drop data on a destructive change.
+
+## Project Structure
 
 ```
 src/
-├── app/                     # Next.js 14 App Router
-│   ├── (auth)/             # Authentication pages
-│   ├── api/                # API routes
-│   ├── creator/            # Creator dashboard
-│   ├── fan/               # Fan interface
-│   └── admin/             # Admin panel
-├── components/             # React components
-│   ├── ui/                # Reusable UI components
-│   ├── auth/              # Authentication components
-│   ├── creator/           # Creator-specific components
-│   ├── player/            # Audio player
-│   └── admin/             # Admin components
-├── lib/                   # Utilities and configs
-├── hooks/                 # Custom React hooks
-├── types/                 # TypeScript definitions
-└── middleware.ts          # Next.js middleware
+├── app/                # Next.js App Router: pages + API routes
+│   ├── api/             # API routes (mirrors the page structure)
+│   ├── admin/            # Admin dashboard (isAdmin-gated)
+│   ├── creator/          # Creator's own dashboard, studio, shop
+│   ├── artist/[id]/       # Public creator profile/store/subscribe pages
+│   └── fan/              # Fan dashboard
+├── components/          # React components, organized by area
+├── lib/                # Shared server logic (auth, stripe, mux, email, revenue-ledger, ...)
+├── hooks/               # Client hooks
+├── middleware.ts        # Auth gate for protected routes (explicit allowlist - see the file's own comment)
+└── types/               # Ambient type declarations
 prisma/
-└── schema.prisma          # Database schema
+└── schema.prisma        # Database schema
+scripts/
+└── bootstrap-admin.js   # One-time first-admin bootstrap (see Deployment)
 ```
 
-## 🎨 Key Features & Pages
-
-### 🏠 Homepage
-- Hero section with platform overview
-- Featured artists and trending content
-- Newsletter signup integration
-- Modern gradient design
-
-### 🎵 Music Player
-- Advanced audio controls
-- Queue management
-- Real-time playback status
-- Responsive design
-
-### 👨‍🎨 Creator Dashboard (`/creator`)
-- Campaign composer for marketing
-- Subscriber management system  
-- Revenue analytics
-- Shop management for direct sales
-- Invite system for new creators
-
-### 👥 Fan Interface (`/fan`)
-- Artist discovery and following
-- Subscription management
-- Personalized content feed
-- Community interaction tools
-
-### 🔐 Authentication
-- Secure sign-in/sign-up flows
-- Social login integration ready
-- Role-based access (Admin, Creator, Fan)
-- Profile management
-
-### 🛍 E-Commerce
-- Direct artist-to-fan sales
-- Stripe payment processing
-- Digital product delivery
-- Shopping cart functionality
-
-### 📧 Email System
-- Welcome emails for new users
-- Payment confirmations
-- Marketing campaigns
-- Transactional notifications
-
-## 🌐 API Routes
-
-### Authentication
-- `POST /api/auth/[...nextauth]` - NextAuth endpoints
-
-### Creator Management  
-- `GET /api/creator/campaigns` - Campaign data
-- `GET /api/creator/subscribers` - Subscriber analytics
-
-### Invitations
-- `POST /api/invites/create` - Create invitations
-- `POST /api/invites/validate` - Validate invite codes
-- `GET /api/invites/creator` - Creator invitations
-
-### Commerce
-- `POST /api/shop/create` - Create products
-- `POST /api/stripe/create-payment` - Process payments
-- `POST /api/stripe/webhook` - Stripe webhooks
-
-### Email & Testing
-- `POST /api/newsletter/subscribe` - Newsletter signup
-- `GET /api/test/resend-config` - Email configuration test
-- `POST /api/test/email-welcome` - Test welcome emails
-
-## � Deployment
-
-### Vercel (Recommended)
-The application is optimized for Vercel deployment:
+## Scripts
 
 ```bash
-# Deploy via CLI
-npm run deploy
-
-# Or connect GitHub repository to Vercel for automatic deployments
+npm run dev             # Development server
+npm run build            # Production build
+npm start                # Run a production build
+npm run lint              # ESLint
+npm run bootstrap-admin -- you@example.com   # First-admin bootstrap (or call the script directly, see Deployment)
 ```
-
-**Live Demo**: [https://vynl-6o3covpkk-vynl-app.vercel.app](https://vynl-6o3covpkk-vynl-app.vercel.app)
-
-### Environment Variables for Production
-Set these in your Vercel dashboard:
-- `DATABASE_URL` - PostgreSQL connection string
-- `NEXTAUTH_SECRET` - Authentication secret
-- `NEXTAUTH_URL` - Your production URL
-- `RESEND_API_KEY` - Email API key
-- `STRIPE_SECRET_KEY` - Stripe secret (optional)
-
-### Alternative Platforms
-- **Netlify**: Compatible with Next.js
-- **Railway**: Good PostgreSQL integration  
-- **Render**: Simple deployment process
-
-## 📊 Current Status
-
-✅ **Production Ready**
-- ✅ 41 routes successfully building
-- ✅ TypeScript compilation passing
-- ✅ All components functional
-- ✅ Database schema complete
-- ✅ Authentication system working
-- ✅ Email integration active
-- ✅ Payment system configured
-
-🚧 **In Development**
-- 🔄 Advanced audio player features
-- 🔄 File upload system
-- 🔄 Advanced analytics dashboard
-- 🔄 Mobile app companion
-
-## 📱 Browser Support
-
-- ✅ Chrome 90+
-- ✅ Firefox 88+
-- ✅ Safari 14+
-- ✅ Edge 90+
-- ✅ Mobile browsers (iOS Safari, Chrome Mobile)
-
-## 🧪 Testing
-
-```bash
-# Run development server
-npm run dev
-
-# Build for production
-npm run build
-
-# Start production server
-npm start
-
-# Lint code
-npm run lint
-```
-
-## � Key Technologies
-
-- **Next.js 14.2.16** - React framework with App Router
-- **TypeScript** - Type safety and developer experience
-- **Prisma 6.12.0** - Database ORM and migrations
-- **Tailwind CSS** - Utility-first styling
-- **NextAuth.js** - Authentication solution
-- **Stripe** - Payment processing
-- **Resend** - Email delivery service
-- **Vercel** - Deployment and hosting
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-### Development Workflow
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## 📞 Support & Contact
-
-For questions, support, or collaboration:
-- **GitHub**: [hanger5ent/vynl-music-platform](https://github.com/hanger5ent/vynl-music-platform)
-- **Issues**: Report bugs or request features
-- **Discussions**: Join the community conversation
-
-## 🙏 Acknowledgments
-
-- Next.js team for the amazing framework
-- Prisma for excellent database tooling
-- Vercel for seamless deployment
-- The open-source community
-
----
-
-**Built with ❤️ for the music community**
-
-*Empowering artists and connecting fans through technology*
