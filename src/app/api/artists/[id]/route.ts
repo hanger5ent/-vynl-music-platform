@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
 
 // Get artist profile and music
 export async function GET(
@@ -8,92 +9,102 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
+    const session = await getServerSession(authOptions)
     const artistId = params.id
 
-    // Mock artist profile
-    const mockArtist = {
-      id: artistId,
-      name: 'Sarah Music',
-      username: 'sarahmusic',
-      email: 'sarah@example.com',
-      bio: 'Pop artist creating feel-good music for the soul. Based in Los Angeles, bringing summer vibes year-round.',
-      avatar: 'https://images.unsplash.com/photo-1494790108755-2616b332de0b?w=400&h=400&fit=crop&crop=face',
-      isArtist: true,
-      isVerified: true,
-      createdAt: '2023-06-15T10:00:00Z',
-      
-      // Artist-specific profile
-      artistProfile: {
-        stageName: 'Sarah Music',
-        genre: ['Pop', 'Indie Pop', 'Electronic'],
-        location: 'Los Angeles, CA',
-        website: 'https://sarahmusic.com',
-        socialLinks: {
-          instagram: 'https://instagram.com/sarahmusic',
-          twitter: 'https://twitter.com/sarahmusic',
-          spotify: 'https://open.spotify.com/artist/sarahmusic',
-          youtube: 'https://youtube.com/@sarahmusic'
+    const artist = await prisma.user.findUnique({
+      where: { id: artistId },
+      select: {
+        id: true,
+        name: true,
+        username: true,
+        bio: true,
+        avatar: true,
+        isCreator: true,
+        isVerified: true,
+        createdAt: true,
+        creatorProfile: {
+          select: {
+            stageName: true,
+            genre: true,
+            location: true,
+            website: true,
+            socialLinks: true,
+          },
         },
-        totalStreams: 1250000,
-        totalRevenue: 15750.50,
+        _count: { select: { followers: true, following: true, tracks: true, albums: true } },
       },
-      
-      // Stats
-      followerCount: 8420,
-      followingCount: 245,
-      trackCount: 24,
-      albumCount: 3,
-      
-      // Recent tracks
-      recentTracks: [
-        {
-          id: '1',
-          title: 'Summer Vibes',
-          slug: 'summer-vibes',
-          duration: 210,
-          audioUrl: 'https://storage.example.com/tracks/summer-vibes.mp3',
-          genre: 'Pop',
-          playCount: 15420,
-          likeCount: 342,
-          createdAt: '2024-01-15T10:00:00Z'
-        },
-        {
-          id: '4',
-          title: 'City Lights',
-          slug: 'city-lights',
-          duration: 185,
-          audioUrl: 'https://storage.example.com/tracks/city-lights.mp3',
-          genre: 'Indie Pop',
-          playCount: 9850,
-          likeCount: 198,
-          createdAt: '2024-01-12T14:30:00Z'
-        }
-      ],
-      
-      // Albums
-      albums: [
-        {
-          id: 'album1',
-          title: 'Summer Collection',
-          slug: 'summer-collection',
-          coverImage: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=400&h=400&fit=crop',
-          trackCount: 8,
-          releaseDate: '2024-01-01T00:00:00Z',
-          price: 9.99
-        },
-        {
-          id: 'album2',
-          title: 'City Dreams',
-          slug: 'city-dreams',
-          coverImage: 'https://images.unsplash.com/photo-1516280440614-37939bbacd81?w=400&h=400&fit=crop',
-          trackCount: 6,
-          releaseDate: '2023-09-15T00:00:00Z',
-          price: 7.99
-        }
-      ]
+    })
+
+    if (!artist || !artist.isCreator) {
+      return NextResponse.json({ error: 'Artist not found' }, { status: 404 })
     }
 
-    return NextResponse.json({ artist: mockArtist })
+    const [recentTracks, albums, streamTotal, isFollowing] = await Promise.all([
+      prisma.track.findMany({
+        where: { ownerId: artistId, processingStatus: 'READY', isTakenDown: false },
+        select: {
+          id: true, title: true, slug: true, duration: true, audioUrl: true,
+          genre: true, playCount: true, likeCount: true, price: true, isFree: true, createdAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+      }),
+      prisma.album.findMany({
+        where: { ownerId: artistId },
+        select: { id: true, title: true, slug: true, coverImage: true, releaseDate: true, price: true, isFree: true, _count: { select: { tracks: true } } },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.track.aggregate({
+        where: { ownerId: artistId, processingStatus: 'READY', isTakenDown: false },
+        _sum: { playCount: true },
+      }),
+      session?.user?.id
+        ? prisma.follow.findUnique({
+            where: { followerId_followingId: { followerId: session.user.id, followingId: artistId } },
+            select: { id: true },
+          })
+        : null,
+    ])
+
+    let likedTrackIds = new Set<string>()
+    if (session?.user) {
+      const likes = await prisma.like.findMany({
+        where: { userId: session.user.id, trackId: { in: recentTracks.map((t) => t.id) } },
+        select: { trackId: true },
+      })
+      likedTrackIds = new Set(likes.map((l) => l.trackId!))
+    }
+
+    return NextResponse.json({
+      artist: {
+        id: artist.id,
+        name: artist.creatorProfile?.stageName || artist.name,
+        username: artist.username,
+        bio: artist.bio,
+        avatar: artist.avatar,
+        isCreator: artist.isCreator,
+        isVerified: artist.isVerified,
+        createdAt: artist.createdAt,
+        creatorProfile: artist.creatorProfile,
+        followerCount: artist._count.followers,
+        followingCount: artist._count.following,
+        trackCount: artist._count.tracks,
+        albumCount: artist._count.albums,
+        totalStreams: streamTotal._sum.playCount || 0,
+        isFollowing: session?.user?.id === artistId ? null : !!isFollowing,
+        recentTracks: recentTracks.map((t) => ({
+          ...t,
+          price: t.price ? Number(t.price) : null,
+          likedByMe: likedTrackIds.has(t.id),
+        })),
+        albums: albums.map((a) => ({
+          ...a,
+          price: a.price ? Number(a.price) : null,
+          trackCount: a._count.tracks,
+        })),
+      },
+    })
 
   } catch (error) {
     console.error('Failed to fetch artist:', error)

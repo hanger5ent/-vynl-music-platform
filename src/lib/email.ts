@@ -293,6 +293,33 @@ class EmailService {
 
     return result.success
   }
+
+  async sendCreatorApplicationRejected(userEmail: string, userName: string, note?: string): Promise<boolean> {
+    const subject = `Update on Your Vynl Creator Application`
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h1 style="color: #8b5cf6;">Your Creator Application</h1>
+        <p>Hi ${userName},</p>
+        <p>Thanks for applying for creator access on Vynl. After review, we're not able to approve your application at this time.</p>
+        ${note ? `
+          <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <h3 style="margin: 0 0 10px 0;">Feedback from our team:</h3>
+            <p style="margin: 5px 0;">${note}</p>
+          </div>
+        ` : ''}
+        <p>You're welcome to apply again once you've had a chance to address any feedback above.</p>
+      </div>
+    `
+
+    const result = await this.sendEmail({
+      to: userEmail,
+      subject,
+      html,
+    })
+
+    return result.success
+  }
 }
 
 export const emailService = new EmailService()

@@ -48,6 +48,7 @@ export function Sidebar({ userType }: SidebarProps) {
     { name: 'Creator Studio', href: '/creator/studio', icon: PlusCircleIcon },
     { name: 'Shop', href: '/creator/shop', icon: ShoppingBagIcon },
     { name: 'Royalties', href: '/creator/royalties', icon: CurrencyDollarIcon },
+    { name: 'Payouts', href: '/creator/payouts', icon: CurrencyDollarIcon },
     { name: 'Settings', href: '/settings', icon: CogIcon },
   ]
 

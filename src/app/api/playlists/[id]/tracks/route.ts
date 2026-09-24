@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+
+async function assertOwnership(playlistId: string, userId: string) {
+  const playlist = await prisma.playlist.findUnique({ where: { id: playlistId }, select: { ownerId: true } })
+  if (!playlist) return { error: 'Playlist not found', status: 404 as const }
+  if (playlist.ownerId !== userId) return { error: 'You can only manage your own playlists', status: 403 as const }
+  return null
+}
 
 // Add track to playlist
 export async function POST(
@@ -9,40 +17,54 @@ export async function POST(
 ) {
   try {
     const session = await getServerSession(authOptions)
-    
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const playlistId = params.id
-    const { trackId, position } = await req.json()
+    const ownership = await assertOwnership(playlistId, session.user.id)
+    if (ownership) {
+      return NextResponse.json({ error: ownership.error }, { status: ownership.status })
+    }
 
+    const { trackId } = await req.json()
     if (!trackId) {
-      return NextResponse.json({ 
-        error: 'Track ID is required' 
-      }, { status: 400 })
+      return NextResponse.json({ error: 'Track ID is required' }, { status: 400 })
     }
 
-    // In production:
-    // 1. Verify playlist ownership or if it's collaborative
-    // 2. Check if track exists
-    // 3. Check if track is already in playlist
-    // 4. Add track at specified position or end
-
-    const playlistTrack = {
-      id: `playlist_track_${Date.now()}`,
-      playlistId,
-      trackId,
-      position: position || 1,
-      addedAt: new Date(),
-      addedBy: session.user.id
+    const track = await prisma.track.findUnique({ where: { id: trackId }, select: { id: true, processingStatus: true } })
+    if (!track || track.processingStatus !== 'READY') {
+      return NextResponse.json({ error: 'Track not found' }, { status: 404 })
     }
+
+    const existing = await prisma.playlistTrack.findUnique({
+      where: { playlistId_trackId: { playlistId, trackId } },
+    })
+    if (existing) {
+      return NextResponse.json({ error: 'Track is already in this playlist' }, { status: 409 })
+    }
+
+    const lastPosition = await prisma.playlistTrack.aggregate({
+      where: { playlistId },
+      _max: { position: true },
+    })
+
+    const playlistTrack = await prisma.$transaction([
+      prisma.playlistTrack.create({
+        data: {
+          playlistId,
+          trackId,
+          position: (lastPosition._max.position ?? 0) + 1,
+        },
+      }),
+      prisma.playlist.update({ where: { id: playlistId }, data: { updatedAt: new Date() } }),
+    ])
 
     return NextResponse.json({
       success: true,
-      playlistTrack,
+      playlistTrack: playlistTrack[0],
       message: 'Track added to playlist successfully'
-    })
+    }, { status: 201 })
 
   } catch (error) {
     console.error('Failed to add track to playlist:', error)
@@ -60,25 +82,24 @@ export async function DELETE(
 ) {
   try {
     const session = await getServerSession(authOptions)
-    
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const playlistId = params.id
+    const ownership = await assertOwnership(playlistId, session.user.id)
+    if (ownership) {
+      return NextResponse.json({ error: ownership.error }, { status: ownership.status })
+    }
+
     const { searchParams } = new URL(req.url)
     const trackId = searchParams.get('trackId')
 
     if (!trackId) {
-      return NextResponse.json({ 
-        error: 'Track ID is required' 
-      }, { status: 400 })
+      return NextResponse.json({ error: 'Track ID is required' }, { status: 400 })
     }
 
-    // In production:
-    // 1. Verify playlist ownership
-    // 2. Remove track from playlist
-    // 3. Reorder remaining tracks if needed
+    await prisma.playlistTrack.deleteMany({ where: { playlistId, trackId } })
 
     return NextResponse.json({
       success: true,
@@ -101,24 +122,32 @@ export async function PUT(
 ) {
   try {
     const session = await getServerSession(authOptions)
-    
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const playlistId = params.id
+    const ownership = await assertOwnership(playlistId, session.user.id)
+    if (ownership) {
+      return NextResponse.json({ error: ownership.error }, { status: ownership.status })
+    }
+
     const { trackOrders } = await req.json()
 
     if (!Array.isArray(trackOrders)) {
-      return NextResponse.json({ 
-        error: 'Track orders must be an array' 
+      return NextResponse.json({
+        error: 'Track orders must be an array'
       }, { status: 400 })
     }
 
-    // In production:
-    // 1. Verify playlist ownership
-    // 2. Update track positions in database
-    // 3. Validate all tracks belong to the playlist
+    await prisma.$transaction(
+      trackOrders.map((t: { trackId: string; position: number }) =>
+        prisma.playlistTrack.updateMany({
+          where: { playlistId, trackId: t.trackId },
+          data: { position: t.position },
+        })
+      )
+    )
 
     return NextResponse.json({
       success: true,

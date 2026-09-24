@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+import { emailService } from '@/lib/email'
 
 function generateInviteCode(): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
@@ -9,6 +11,15 @@ function generateInviteCode(): string {
     result += chars.charAt(Math.floor(Math.random() * chars.length))
   }
   return result
+}
+
+async function generateUniqueInviteCode() {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const code = generateInviteCode()
+    const existing = await prisma.invite.findUnique({ where: { code }, select: { id: true } })
+    if (!existing) return code
+  }
+  throw new Error('Could not generate a unique invite code')
 }
 
 export async function POST(req: NextRequest) {
@@ -25,36 +36,48 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Valid email is required' }, { status: 400 })
     }
 
-    // Check if Resend is configured
-    if (!process.env.RESEND_API_KEY || process.env.RESEND_API_KEY === 're_your_resend_api_key_here') {
-      console.error('Resend API key not configured')
-      return NextResponse.json({ error: 'Email service not configured' }, { status: 500 })
+    const existingPending = await prisma.invite.findFirst({
+      where: { email, createdBy: session.user.id, usedBy: null, isActive: true },
+    })
+    if (existingPending) {
+      return NextResponse.json({
+        error: 'You already have a pending invite out to this email address'
+      }, { status: 409 })
     }
 
-    // Generate unique invite code
-    const inviteCode = generateInviteCode()
-    
-    try {
-      // TODO: Send invitation email when email service is configured
-      console.log('Creator invite requested:', {
-        to: email,
-        from: session.user.email,
-        inviteCode,
-        message: message || 'Default invite message'
-      })
+    const code = await generateUniqueInviteCode()
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
 
-      return NextResponse.json({ 
-        success: true, 
-        message: `Invitation would be sent to ${email}`,
-        inviteCode
-      })
+    const invite = await prisma.invite.create({
+      data: {
+        code,
+        email,
+        type: 'CREATOR',
+        expiresAt,
+        createdBy: session.user.id,
+      },
+    })
 
-    } catch (emailError) {
-      console.error('Failed to send creator invite email:', emailError)
-      return NextResponse.json({ 
-        error: 'Failed to send invitation email. Please check your email configuration.' 
-      }, { status: 500 })
+    const sent = await emailService.sendCreatorInvite({
+      email,
+      inviterName: session.user.name || 'A Vynl creator',
+      inviterEmail: session.user.email || '',
+      message: message || undefined,
+      inviteCode: code,
+    })
+
+    if (!sent) {
+      // The invite is real and usable even if the email didn't go out —
+      // don't discard it, since the code can still be shared manually.
+      console.error(`Creator invite email to ${email} failed to send (invite ${invite.id} still created)`)
     }
+
+    return NextResponse.json({
+      success: true,
+      message: sent ? `Invitation sent to ${email}` : `Invite created, but the email to ${email} failed to send — share the code directly`,
+      inviteCode: code,
+      emailSent: sent,
+    }, { status: 201 })
 
   } catch (error) {
     console.error('Creator invite API error:', error)
@@ -65,7 +88,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// GET method to retrieve invite status or list sent invites
+// List invites this user has sent, or check one code's status
 export async function GET(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
@@ -77,27 +100,36 @@ export async function GET(req: NextRequest) {
     const inviteCode = searchParams.get('code')
 
     if (inviteCode) {
-      // In a real implementation, you would check the database for this invite code
+      const invite = await prisma.invite.findUnique({ where: { code: inviteCode } })
+      if (!invite) {
+        return NextResponse.json({ valid: false, message: 'Invite code not found' }, { status: 404 })
+      }
+      const valid = invite.isActive && !invite.usedBy && (!invite.expiresAt || invite.expiresAt > new Date())
       return NextResponse.json({
-        valid: true,
-        code: inviteCode,
-        message: 'Invite code is valid'
+        valid,
+        code: invite.code,
+        message: !invite.isActive ? 'Invite has been deactivated'
+          : invite.usedBy ? 'Invite has already been used'
+          : invite.expiresAt && invite.expiresAt <= new Date() ? 'Invite has expired'
+          : 'Invite code is valid',
       })
     }
 
-    // Return mock invite history for now
+    const invites = await prisma.invite.findMany({
+      where: { createdBy: session.user.id },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, email: true, code: true, createdAt: true, usedAt: true, expiresAt: true, isActive: true },
+    })
+
     return NextResponse.json({
-      invites: [
-        {
-          id: '1',
-          email: 'creator@example.com',
-          inviterName: session.user.name,
-          sentAt: new Date().toISOString(),
-          status: 'sent',
-          inviteCode: 'ABC12345'
-        }
-      ],
-      total: 1
+      invites: invites.map((i) => ({
+        id: i.id,
+        email: i.email,
+        inviteCode: i.code,
+        sentAt: i.createdAt,
+        status: i.usedAt ? 'accepted' : (i.expiresAt && i.expiresAt <= new Date()) || !i.isActive ? 'expired' : 'sent',
+      })),
+      total: invites.length,
     })
 
   } catch (error) {

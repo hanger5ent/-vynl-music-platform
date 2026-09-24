@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const data = createEventSchema.parse(body)
 
-    const event = await prisma.event.create({
+    const event = await prisma.eventListing.create({
       data: {
         title: data.title,
         description: data.description,

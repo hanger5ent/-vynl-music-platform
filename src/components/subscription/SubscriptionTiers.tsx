@@ -1,29 +1,34 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { formatCurrency } from '@/lib/utils'
-import { formatStripeAmount, getSubscriptionDisplayInfo } from '@/lib/stripe-client'
-import { Check, Crown, Music, Users, Star } from 'lucide-react'
-import { SUBSCRIPTION_TIERS } from '@/lib/stripe'
+import { formatStripeAmount } from '@/lib/stripe-client'
+import { Check, Crown, Music, Users, Star, Loader2 } from 'lucide-react'
+
+export interface FanFacingTier {
+  id: 'basic' | 'premium' | 'vip'
+  name: string
+  price: number
+  interval: string
+  features: string[]
+  isActive: boolean
+}
 
 interface SubscriptionCardProps {
   artistId: string
   artistName: string
-  tier: keyof typeof SUBSCRIPTION_TIERS
+  tierData: FanFacingTier
+  featured?: boolean
   onSubscribe?: (tier: string, checkoutUrl: string) => void
 }
 
-export function SubscriptionCard({ artistId, artistName, tier, onSubscribe }: SubscriptionCardProps) {
+export function SubscriptionCard({ artistId, artistName, tierData, featured, onSubscribe }: SubscriptionCardProps) {
   const { data: session } = useSession()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const tierConfig = SUBSCRIPTION_TIERS[tier]
-
   const handleSubscribe = async () => {
     if (!session?.user) {
-      // Redirect to login or show login modal
       window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.href)
       return
     }
@@ -39,7 +44,7 @@ export function SubscriptionCard({ artistId, artistName, tier, onSubscribe }: Su
         },
         body: JSON.stringify({
           artistId,
-          tier,
+          tier: tierData.id,
           returnUrl: window.location.origin,
         }),
       })
@@ -51,12 +56,9 @@ export function SubscriptionCard({ artistId, artistName, tier, onSubscribe }: Su
       }
 
       if (data.checkoutUrl) {
-        // Redirect to Stripe Checkout
         window.location.href = data.checkoutUrl
-        
-        // Optional: notify parent component
         if (onSubscribe) {
-          onSubscribe(tier, data.checkoutUrl)
+          onSubscribe(tierData.id, data.checkoutUrl)
         }
       } else {
         throw new Error('No checkout URL returned')
@@ -71,7 +73,7 @@ export function SubscriptionCard({ artistId, artistName, tier, onSubscribe }: Su
   }
 
   const getIcon = () => {
-    switch (tier) {
+    switch (tierData.id) {
       case 'basic':
         return <Music className="h-6 w-6" />
       case 'premium':
@@ -84,7 +86,7 @@ export function SubscriptionCard({ artistId, artistName, tier, onSubscribe }: Su
   }
 
   const getColorClasses = () => {
-    switch (tier) {
+    switch (tierData.id) {
       case 'basic':
         return {
           border: 'border-blue-200',
@@ -119,8 +121,8 @@ export function SubscriptionCard({ artistId, artistName, tier, onSubscribe }: Su
   const colors = getColorClasses()
 
   return (
-    <div className={`bg-white rounded-xl border-2 ${colors.border} p-6 relative ${tier === 'vip' ? 'shadow-lg' : 'shadow-sm'}`}>
-      {tier === 'vip' && (
+    <div className={`bg-white rounded-xl border-2 ${colors.border} p-6 relative ${featured ? 'shadow-lg' : 'shadow-sm'}`}>
+      {featured && (
         <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
           <span className={`px-3 py-1 rounded-full text-xs font-medium ${colors.badge}`}>
             Most Popular
@@ -132,17 +134,17 @@ export function SubscriptionCard({ artistId, artistName, tier, onSubscribe }: Su
         <div className={`inline-flex items-center justify-center w-12 h-12 rounded-full bg-gray-100 mb-4 ${colors.icon}`}>
           {getIcon()}
         </div>
-        
-        <h3 className="text-xl font-bold text-gray-900 mb-2">{tierConfig.name}</h3>
-        
+
+        <h3 className="text-xl font-bold text-gray-900 mb-2">{tierData.name}</h3>
+
         <div className="text-3xl font-bold text-gray-900 mb-1">
-          {formatStripeAmount(tierConfig.price)}
+          {formatStripeAmount(tierData.price)}
         </div>
-        <p className="text-gray-600 text-sm">per {tierConfig.interval}</p>
+        <p className="text-gray-600 text-sm">per {tierData.interval}</p>
       </div>
 
       <ul className="space-y-3 mb-6">
-        {tierConfig.features.map((feature, index) => (
+        {tierData.features.map((feature, index) => (
           <li key={index} className="flex items-start gap-3">
             <Check className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
             <span className="text-gray-700 text-sm">{feature}</span>
@@ -185,14 +187,48 @@ interface SubscriptionTiersProps {
   onSubscribe?: (tier: string, checkoutUrl: string) => void
 }
 
-export default function SubscriptionTiers({ 
-  artistId, 
-  artistName, 
+export default function SubscriptionTiers({
+  artistId,
+  artistName,
   showAllTiers = true,
-  onSubscribe 
+  onSubscribe
 }: SubscriptionTiersProps) {
-  const allTiers = ['basic', 'premium', 'vip'] as const
-  const selectedTiers = showAllTiers ? allTiers : ['premium']
+  const [tiers, setTiers] = useState<FanFacingTier[] | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    fetch(`/api/artists/${artistId}/tiers`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled) setTiers(data.tiers || [])
+      })
+      .catch(() => {
+        if (!cancelled) setTiers([])
+      })
+    return () => { cancelled = true }
+  }, [artistId])
+
+  if (tiers === null) {
+    return (
+      <div className="flex justify-center py-12 text-gray-400">
+        <Loader2 className="h-6 w-6 animate-spin" />
+      </div>
+    )
+  }
+
+  if (tiers.length === 0) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-gray-600">{artistName} hasn&apos;t set up any subscription tiers yet.</p>
+      </div>
+    )
+  }
+
+  const selectedTiers = showAllTiers
+    ? tiers
+    : tiers.filter((t) => t.id === 'premium').length > 0
+      ? tiers.filter((t) => t.id === 'premium')
+      : tiers.slice(0, 1)
 
   const getGridClasses = () => {
     const count = selectedTiers.length
@@ -213,12 +249,13 @@ export default function SubscriptionTiers({
       </div>
 
       <div className={`grid gap-6 ${getGridClasses()}`}>
-        {selectedTiers.map((tier) => (
+        {selectedTiers.map((tierData) => (
           <SubscriptionCard
-            key={tier}
+            key={tierData.id}
             artistId={artistId}
             artistName={artistName}
-            tier={tier as keyof typeof SUBSCRIPTION_TIERS}
+            tierData={tierData}
+            featured={tierData.id === 'vip' && selectedTiers.length > 1}
             onSubscribe={onSubscribe}
           />
         ))}

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
 
 // Get playlist details with tracks
 export async function GET(
@@ -8,88 +9,59 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
+    const session = await getServerSession(authOptions)
     const playlistId = params.id
 
-    // Mock playlist with tracks
-    const mockPlaylist = {
-      id: playlistId,
-      title: 'My Favorites',
-      description: 'All-time favorite tracks that never get old',
-      coverImage: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=400&h=400&fit=crop',
-      isPublic: true,
-      trackCount: 3,
-      totalDuration: 645, // 10:45
-      likeCount: 12,
-      createdAt: '2024-01-01T10:00:00Z',
-      updatedAt: '2024-01-20T15:30:00Z',
-      owner: {
-        id: 'user1',
-        name: 'Music Lover',
-        username: 'musiclover',
-        avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&h=150&fit=crop&crop=face'
+    const playlist = await prisma.playlist.findUnique({
+      where: { id: playlistId },
+      include: {
+        owner: { select: { id: true, name: true, username: true, avatar: true } },
+        tracks: {
+          orderBy: { position: 'asc' },
+          include: {
+            track: {
+              select: {
+                id: true, title: true, slug: true, duration: true, audioUrl: true,
+                genre: true, price: true, isFree: true, playCount: true, processingStatus: true,
+                owner: { select: { id: true, name: true, username: true, avatar: true } },
+              },
+            },
+          },
+        },
       },
-      tracks: [
-        {
-          id: '1',
-          title: 'Summer Vibes',
-          slug: 'summer-vibes',
-          duration: 210,
-          audioUrl: 'https://storage.example.com/tracks/summer-vibes.mp3',
-          genre: 'Pop',
-          price: 1.99,
-          isFree: false,
-          playCount: 15420,
-          position: 1,
-          addedAt: '2024-01-15T10:00:00Z',
-          owner: {
-            id: 'artist1',
-            name: 'Sarah Music',
-            username: 'sarahmusic',
-            avatar: 'https://images.unsplash.com/photo-1494790108755-2616b332de0b?w=50&h=50&fit=crop&crop=face'
-          }
-        },
-        {
-          id: '2',
-          title: 'Midnight Blues',
-          slug: 'midnight-blues',
-          duration: 195,
-          audioUrl: 'https://storage.example.com/tracks/midnight-blues.mp3',
-          genre: 'Blues',
-          price: null,
-          isFree: true,
-          playCount: 8900,
-          position: 2,
-          addedAt: '2024-01-16T14:30:00Z',
-          owner: {
-            id: 'artist2',
-            name: 'Blues Brother',
-            username: 'bluesbrother',
-            avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=50&h=50&fit=crop&crop=face'
-          }
-        },
-        {
-          id: '3',
-          title: 'Electronic Dreams',
-          slug: 'electronic-dreams',
-          duration: 240,
-          audioUrl: 'https://storage.example.com/tracks/electronic-dreams.mp3',
-          genre: 'Electronic',
-          price: 2.49,
-          isFree: false,
-          playCount: 12300,
-          position: 3,
-          addedAt: '2024-01-17T16:45:00Z',
-          owner: {
-            id: 'artist3',
-            name: 'Synth Master',
-            username: 'synthmaster',
-            avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=50&h=50&fit=crop&crop=face'
-          }
-        }
-      ]
+    })
+
+    if (!playlist) {
+      return NextResponse.json({ error: 'Playlist not found' }, { status: 404 })
     }
 
-    return NextResponse.json({ playlist: mockPlaylist })
+    const isOwner = session?.user?.id === playlist.ownerId
+    if (!playlist.isPublic && !isOwner) {
+      return NextResponse.json({ error: 'Playlist not found' }, { status: 404 })
+    }
+
+    return NextResponse.json({
+      playlist: {
+        id: playlist.id,
+        title: playlist.title,
+        description: playlist.description,
+        coverImage: playlist.coverImage,
+        isPublic: playlist.isPublic,
+        likeCount: playlist.likeCount,
+        createdAt: playlist.createdAt,
+        updatedAt: playlist.updatedAt,
+        owner: playlist.owner,
+        isOwner,
+        trackCount: playlist.tracks.length,
+        totalDuration: playlist.tracks.reduce((sum, t) => sum + t.track.duration, 0),
+        tracks: playlist.tracks.map((pt) => ({
+          ...pt.track,
+          price: pt.track.price ? Number(pt.track.price) : null,
+          position: pt.position,
+          addedAt: pt.addedAt,
+        })),
+      },
+    })
 
   } catch (error) {
     console.error('Failed to fetch playlist:', error)
@@ -100,6 +72,13 @@ export async function GET(
   }
 }
 
+async function assertOwnership(playlistId: string, userId: string) {
+  const playlist = await prisma.playlist.findUnique({ where: { id: playlistId }, select: { ownerId: true } })
+  if (!playlist) return { error: 'Playlist not found', status: 404 as const }
+  if (playlist.ownerId !== userId) return { error: 'You can only manage your own playlists', status: 403 as const }
+  return null
+}
+
 // Update playlist
 export async function PUT(
   req: NextRequest,
@@ -107,20 +86,32 @@ export async function PUT(
 ) {
   try {
     const session = await getServerSession(authOptions)
-    
+
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const playlistId = params.id
-    const updates = await req.json()
-
-    // In production, verify ownership and update database
-    const updatedPlaylist = {
-      id: playlistId,
-      ...updates,
-      updatedAt: new Date()
+    const ownership = await assertOwnership(playlistId, session.user.id)
+    if (ownership) {
+      return NextResponse.json({ error: ownership.error }, { status: ownership.status })
     }
+
+    const { title, description, isPublic, coverImage } = await req.json()
+
+    if (title !== undefined && (!title.trim() || title.length > 100)) {
+      return NextResponse.json({ error: 'Playlist title must be 1-100 characters' }, { status: 400 })
+    }
+
+    const updatedPlaylist = await prisma.playlist.update({
+      where: { id: playlistId },
+      data: {
+        ...(title !== undefined ? { title: title.trim() } : {}),
+        ...(description !== undefined ? { description: description?.trim() || null } : {}),
+        ...(isPublic !== undefined ? { isPublic } : {}),
+        ...(coverImage !== undefined ? { coverImage } : {}),
+      },
+    })
 
     return NextResponse.json({
       success: true,
@@ -144,14 +135,19 @@ export async function DELETE(
 ) {
   try {
     const session = await getServerSession(authOptions)
-    
+
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const playlistId = params.id
+    const ownership = await assertOwnership(playlistId, session.user.id)
+    if (ownership) {
+      return NextResponse.json({ error: ownership.error }, { status: ownership.status })
+    }
 
-    // In production, verify ownership and delete from database
+    await prisma.playlist.delete({ where: { id: playlistId } })
+
     return NextResponse.json({
       success: true,
       message: 'Playlist deleted successfully'

@@ -39,6 +39,18 @@ export default function SignInPage() {
   const handleDemoSignIn = async () => {
     setIsLoading(true)
     try {
+      // Idempotent: creates the demo account on first use, reuses it after.
+      const signupRes = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Demo User', email: 'demo@vynl.com', password: 'password' }),
+      })
+      if (!signupRes.ok && signupRes.status !== 409) {
+        toast.error('Demo sign in failed')
+        setIsLoading(false)
+        return
+      }
+
       const result = await signIn('credentials', {
         email: 'demo@vynl.com',
         password: 'password',

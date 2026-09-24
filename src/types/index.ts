@@ -4,7 +4,7 @@ export interface User {
   name?: string | null
   email?: string | null
   image?: string | null
-  isArtist?: boolean
+  isCreator?: boolean
   createdAt: Date
   updatedAt: Date
 }
@@ -45,7 +45,7 @@ export interface Playlist {
   updatedAt: Date
 }
 
-export interface ArtistProfile {
+export interface CreatorProfile {
   id: string
   userId: string
   bio?: string | null
@@ -59,7 +59,7 @@ export interface ArtistProfile {
 
 // Extended types with relations
 export interface UserWithProfile extends User {
-  artistProfile?: ArtistProfile
+  creatorProfile?: CreatorProfile
   _count?: {
     followers: number
     following: number

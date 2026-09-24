@@ -18,6 +18,20 @@ export const STRIPE_CONFIG = {
   mode: 'subscription' as const,
 }
 
+// Platform's default cut of gross revenue, recorded as a PLATFORM_FEE ledger
+// entry alongside every earning entry. Matches the 85-90% creator payout the
+// marketing site (for-artists page) advertises — 15% keeps that promise at
+// its floor rather than over- or under-selling it. Admins can change the
+// live value via /api/admin/settings (see src/lib/settings.ts); this is
+// just the fallback used before any admin has set one.
+export const PLATFORM_FEE_PERCENT = 15
+
+export function splitGrossAmount(grossAmount: number, platformFeePercent: number = PLATFORM_FEE_PERCENT) {
+  const platformFee = Math.round(grossAmount * (platformFeePercent / 100) * 100) / 100
+  const netAmount = Math.round((grossAmount - platformFee) * 100) / 100
+  return { grossAmount, platformFee, netAmount }
+}
+
 // Subscription tier configurations
 export const SUBSCRIPTION_TIERS = {
   basic: {

@@ -1,10 +1,16 @@
 import { loadStripe } from '@stripe/stripe-js'
 
-// This is your Stripe publishable key (safe to use in client-side code)
-const stripePublishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || 'pk_test_51RldDl2fc8l8owUvEg4a0WGvIgOflwsDeY63gTO7lTsYbVeMih6l1WC1Wdg440IRdSKTuarfXnfpynHPyiBLA1lw00X8gQlXl4'
+// Safe to expose client-side, but must still come from the environment -
+// silently falling back to a hardcoded key here previously meant a missing
+// env var in production would initialize Stripe.js in test mode with no
+// error, rather than failing loudly.
+const stripePublishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 
 // Initialize Stripe.js
 export const getStripe = () => {
+  if (!stripePublishableKey) {
+    throw new Error('NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is not set')
+  }
   return loadStripe(stripePublishableKey)
 }
 

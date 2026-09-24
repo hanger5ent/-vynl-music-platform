@@ -18,18 +18,23 @@ model User {
   name          String?
   bio           String?
   avatar        String?
-  isArtist      Boolean   @default(false)
+  // Hashed with bcrypt. Null for accounts that only ever use an OAuth provider.
+  password      String?
+  isCreator     Boolean   @default(false)
   isVerified    Boolean   @default(false)
   isAdmin       Boolean   @default(false)
+  isSuspended     Boolean   @default(false)
+  suspendedAt     DateTime?
+  suspendedReason String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
-  
+
   // Authentication
   accounts      Account[]
   sessions      Session[]
-  
-  // Artist profile
-  artistProfile ArtistProfile?
+
+  // Creator profile
+  creatorProfile CreatorProfile?
   
   // Music interactions
   tracks        Track[]    @relation("TrackOwner")
@@ -51,7 +56,12 @@ model User {
   emailLists        CreatorEmailList[]    @relation("CreatorEmailLists")
   emailCampaigns    EmailCampaign[]       @relation("CreatorCampaigns")
   emailDeliveries   EmailDelivery[]       @relation("EmailDeliveries")
-  
+  tierConfigs       CreatorTierConfig[]   @relation("CreatorTierConfigs")
+  creatorApplications   CreatorApplication[] @relation("CreatorApplicant")
+  reviewedApplications  CreatorApplication[] @relation("ApplicationReviewer")
+  adRequests            AdRequest[] @relation("AdRequestCreator")
+  reviewedAdRequests    AdRequest[] @relation("AdRequestReviewer")
+
   // Community
   forumPosts    ForumPost[]
   forumComments ForumComment[]
@@ -60,10 +70,19 @@ model User {
   createdInvites Invite[] @relation("InviteCreator")
   usedInvite     Invite?  @relation("InviteUser")
   
-  // Events
-  organizedEvents Event[] @relation("EventOrganizer")
-  eventAttendees  EventAttendee[]
-  
+  // Live events (concerts, listings)
+  organizedEventListings EventListing[] @relation("EventListingOrganizer")
+  eventTickets           EventTicket[]
+
+  // Event log (analytics)
+  events        Event[]
+
+  // Revenue ledger (creator earnings)
+  revenueLedgerEntries RevenueLedger[]
+
+  // Royalty splits where this user is the registered rights holder
+  royaltySplitsHeld RoyaltySplit[] @relation("RoyaltySplitHolder")
+
   // Shop
   products       Product[] @relation("ProductSeller")
   orders         Order[]   @relation("OrderCustomer")
@@ -71,30 +90,33 @@ model User {
   @@map("users")
 }
 
-// Artist-specific profile
-model ArtistProfile {
+// Creator-specific profile
+model CreatorProfile {
   id          String   @id @default(cuid())
   userId      String   @unique
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
   stageName   String?
   genre       String[]
   location    String?
   website     String?
   socialLinks Json?
-  
-  // Revenue settings
-  stripeAccountId String?
-  payoutEmail     String?
-  
+
+  // Revenue settings (Stripe Connect Express)
+  stripeAccountId         String?
+  stripeChargesEnabled    Boolean  @default(false)
+  stripePayoutsEnabled    Boolean  @default(false)
+  stripeDetailsSubmitted  Boolean  @default(false)
+  payoutEmail             String?
+
   // Statistics
   totalStreams    Int      @default(0)
   totalRevenue    Decimal  @default(0) @db.Decimal(10, 2)
-  
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  
-  @@map("artist_profiles")
+
+  @@map("creator_profiles")
 }
 
 // Music content
@@ -106,14 +128,40 @@ model Track {
   duration    Int      // in seconds
   
   // File storage
-  audioUrl    String
+  // audioUrl is null until processing finishes — see processingStatus.
+  audioUrl    String?
   waveformData Json?
+
+  // Mux ingestion (see src/lib/storage.ts) — null/READY when using local
+  // disk storage instead, which has no async processing step.
+  muxUploadId       String?              @unique
+  muxAssetId        String?              @unique
+  muxPlaybackId     String?
+  processingStatus  TrackProcessingStatus @default(READY)
+  processingError   String?
   
   // Metadata
   genre       String?
   tags        String[]
   lyrics      String?
-  
+
+  // Rights & royalty reporting
+  // ISRC: industry-standard recording identifier, required by PROs
+  // (ASCAP/BMI/SoundExchange) to match plays to a specific recording.
+  isrc              String?   @unique
+  // Self-certification captured at upload time in lieu of automated
+  // content-ID/audio-fingerprinting (not implemented — would require a
+  // third-party service like ACRCloud or Audible Magic).
+  rightsAttested    Boolean   @default(false)
+  rightsAttestedAt  DateTime?
+  royaltySplits     RoyaltySplit[]
+
+  // Admin moderation - hides the track from all public listings/playback
+  // when true, independent of processingStatus.
+  isTakenDown     Boolean   @default(false)
+  takedownReason  String?
+  takenDownAt     DateTime?
+
   // Ownership
   ownerId     String
   owner       User     @relation("TrackOwner", fields: [ownerId], references: [id], onDelete: Cascade)
@@ -140,8 +188,48 @@ model Track {
   comments    Comment[]
   purchases   Purchase[]
   playlistTracks PlaylistTrack[]
-  
+  events      Event[]
+
   @@map("tracks")
+}
+
+// Registered rights/ownership split for a track — who gets credited and
+// what share, for royalty and PRO-reporting purposes. This records
+// ownership; it does not itself move money (see RevenueLedger for that).
+model RoyaltySplit {
+  id      String @id @default(cuid())
+  trackId String
+  track   Track  @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  role       RoyaltyHolderRole
+  // Percentage of this role's royalty pool held by this party, 0-100.
+  percentage Decimal @db.Decimal(5, 2)
+
+  // The rights holder, either a platform user or an off-platform contact
+  holderName  String
+  holderEmail String?
+  holderUserId String?
+  holderUser   User?  @relation("RoyaltySplitHolder", fields: [holderUserId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([trackId])
+  @@map("royalty_splits")
+}
+
+enum TrackProcessingStatus {
+  PROCESSING
+  READY
+  ERRORED
+}
+
+enum RoyaltyHolderRole {
+  SONGWRITER
+  PERFORMER
+  PRODUCER
+  PUBLISHER
+  OTHER
 }
 
 model Album {
@@ -266,16 +354,22 @@ model Comment {
   content String
   userId  String
   user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
   // Polymorphic comments
   trackId String?
   track   Track? @relation(fields: [trackId], references: [id], onDelete: Cascade)
   albumId String?
   album   Album? @relation(fields: [albumId], references: [id], onDelete: Cascade)
-  
+
+  // One level of threading — a reply belongs to a top-level comment.
+  parentId String?
+  parent   Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies  Comment[] @relation("CommentReplies")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
+
+  @@index([trackId])
   @@map("comments")
 }
 
@@ -300,10 +394,63 @@ model Purchase {
   stripePaymentIntentId String?
   
   status     PurchaseStatus @default(PENDING)
-  
+
   createdAt  DateTime @default(now())
-  
+
+  // Revenue ledger entries generated from this purchase
+  revenueLedgerEntries RevenueLedger[]
+
   @@map("purchases")
+}
+
+// Revenue ledger — the append-only record of everything that moves money
+// for a creator (subscription payments, one-off purchases, platform fees,
+// payouts, refunds). Creator earnings dashboards read from this, not from
+// CreatorProfile.totalRevenue (which is a cached rollup for display only).
+model RevenueLedger {
+  id        String   @id @default(cuid())
+
+  creatorId String
+  creator   User     @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+  type      RevenueLedgerEntryType
+
+  // Gross amount of this entry, in the entry's currency. Platform fee
+  // entries and payouts are recorded as negative amounts.
+  amount    Decimal  @db.Decimal(10, 2)
+  currency  String   @default("usd")
+
+  // application_fee_percent applied at the time of this entry, if relevant
+  platformFeePercent Decimal? @db.Decimal(5, 2)
+
+  // Links back to the source record, whichever applies
+  purchaseId     String?
+  purchase       Purchase?            @relation(fields: [purchaseId], references: [id])
+  subscriptionId String?
+  subscription   CreatorSubscription? @relation(fields: [subscriptionId], references: [id])
+  orderId        String?
+  order          Order?               @relation(fields: [orderId], references: [id])
+
+  // Stripe references
+  stripeTransferId      String?
+  stripePaymentIntentId String?
+
+  description String?
+
+  createdAt DateTime @default(now())
+
+  @@index([creatorId])
+  @@map("revenue_ledger")
+}
+
+enum RevenueLedgerEntryType {
+  SUBSCRIPTION_PAYMENT
+  TRACK_PURCHASE
+  ALBUM_PURCHASE
+  PRODUCT_PURCHASE
+  PLATFORM_FEE
+  PAYOUT
+  REFUND
 }
 
 // Creator Subscription System
@@ -339,9 +486,123 @@ model CreatorSubscription {
   nextBilling  DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
-  
+
+  // Revenue ledger entries generated from this subscription
+  revenueLedgerEntries RevenueLedger[]
+
   @@unique([subscriberId, creatorId])
   @@map("creator_subscriptions")
+}
+
+// Per-creator overrides of the platform's fixed subscription tiers
+// (name/price/features/active). A creator with no row for a given tier
+// uses the platform default from SUBSCRIPTION_TIERS.
+model CreatorTierConfig {
+  id        String           @id @default(cuid())
+  creatorId String
+  creator   User             @relation("CreatorTierConfigs", fields: [creatorId], references: [id], onDelete: Cascade)
+  tier      SubscriptionTier
+  name      String
+  price     Int // cents
+  features  String[]
+  isActive  Boolean          @default(true)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@unique([creatorId, tier])
+  @@map("creator_tier_configs")
+}
+
+enum CreatorApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// A fan's request to become a creator, reviewed by an admin. Approval
+// grants isCreator + creates a CreatorProfile, the same way accepting an
+// ADMIN/CREATOR invite does (see /api/invites/validate).
+model CreatorApplication {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation("CreatorApplicant", fields: [userId], references: [id], onDelete: Cascade)
+
+  artistName  String
+  genre       String
+  bio         String
+  socialLinks Json?
+  musicSamples String
+  experienceLevel String
+  goals       String?
+
+  hasOriginalMusic          Boolean
+  hasProfessionalRecordings Boolean
+
+  status      CreatorApplicationStatus @default(PENDING)
+  reviewedBy  String?
+  reviewer    User?     @relation("ApplicationReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
+  reviewNote  String?
+  reviewedAt  DateTime?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@map("creator_applications")
+}
+
+enum AdRequestType {
+  BANNER
+  SPONSORED_POST
+  VIDEO
+  AUDIO_SPOT
+}
+
+enum AdRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// A creator's request to run an ad on the platform, reviewed by an admin.
+// This is the request/approval workflow only - there's no ad-serving or
+// impression/click tracking anywhere in the app yet, so this model doesn't
+// pretend to track spend or performance.
+model AdRequest {
+  id                 String   @id @default(cuid())
+  creatorId          String
+  creator            User     @relation("AdRequestCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+
+  adType             AdRequestType
+  title              String
+  description        String
+  budget             Decimal  @db.Decimal(10, 2)
+  targetAudience     String
+  preferredStartDate DateTime
+
+  status             AdRequestStatus @default(PENDING)
+  reviewedBy         String?
+  reviewer           User?     @relation("AdRequestReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
+  reviewNote         String?
+  reviewedAt         DateTime?
+
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([creatorId])
+  @@index([status])
+  @@map("ad_requests")
+}
+
+// Singleton row (fixed id) holding admin-configurable platform settings.
+model PlatformSettings {
+  id                 String   @id @default("singleton")
+  platformFeePercent Int      @default(15)
+  updatedAt          DateTime @updatedAt
+  updatedBy          String?
+
+  @@map("platform_settings")
 }
 
 // Creator Email Lists for newsletters/updates
@@ -475,60 +736,91 @@ model ForumComment {
   @@map("forum_comments")
 }
 
-// Events system
-model Event {
+// Live events system (concerts, ticketed listings)
+// Named EventListing/EventTicket to avoid colliding with the analytics
+// Event model below, which owns the "events" table per the platform's
+// event-log terminology (see Event model).
+model EventListing {
   id          String   @id @default(cuid())
   title       String
   description String?
-  
+
   // Event details
   startDate   DateTime
   endDate     DateTime?
   location    String?
   venue       String?
   isOnline    Boolean  @default(false)
-  
+
   // Pricing
   price       Decimal? @db.Decimal(10, 2)
   isFree      Boolean  @default(false)
   maxTickets  Int?
-  
+
   // Media
   coverImage  String?
-  
+
   // Organizer
   organizerId String
-  organizer   User     @relation("EventOrganizer", fields: [organizerId], references: [id], onDelete: Cascade)
-  
+  organizer   User     @relation("EventListingOrganizer", fields: [organizerId], references: [id], onDelete: Cascade)
+
   // Attendees
-  attendees   EventAttendee[]
-  
+  tickets     EventTicket[]
+
   // Status
   status      EventStatus @default(DRAFT)
-  
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  
-  @@map("events")
+
+  @@map("event_listings")
 }
 
-model EventAttendee {
+model EventTicket {
   id        String   @id @default(cuid())
   eventId   String
-  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  event     EventListing @relation(fields: [eventId], references: [id], onDelete: Cascade)
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
   ticketType String? // e.g., "general", "vip", "early_bird"
   quantity   Int     @default(1)
-  
+
   // Payment
   amountPaid Decimal @db.Decimal(10, 2)
-  
+
   createdAt  DateTime @default(now())
-  
+
   @@unique([eventId, userId])
-  @@map("event_attendees")
+  @@map("event_tickets")
+}
+
+// Event log (analytics) — tracks the track/creator lifecycle: signup,
+// track_uploaded, track_played, purchase, subscribe, etc.
+// Sprint 1 requirement: "Event system fully wired to track lifecycle."
+model Event {
+  id         String   @id @default(cuid())
+
+  // Event type, e.g. "user.signed_up", "track.uploaded", "track.played", "track.purchased"
+  type       String
+
+  // Actor (nullable for anonymous/system events)
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  // Optional subject references for track-lifecycle events
+  trackId    String?
+  track      Track?   @relation(fields: [trackId], references: [id], onDelete: SetNull)
+
+  // Arbitrary event payload (session id, user agent, ip, etc.)
+  properties Json?
+
+  createdAt  DateTime @default(now())
+
+  @@index([type])
+  @@index([userId])
+  @@index([trackId])
+  @@map("events")
 }
 
 // Shop system
@@ -586,15 +878,19 @@ model Order {
   shippingAddress Json?
   
   // Payment
-  stripeSessionId String?
+  stripeSessionId       String?
+  stripePaymentIntentId String?
   paymentStatus   PaymentStatus @default(PENDING)
-  
+
   // Order status
   orderStatus OrderStatus @default(PENDING)
-  
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  
+
+  // Revenue ledger entries generated from this order
+  revenueLedgerEntries RevenueLedger[]
+
   @@map("orders")
 }
 

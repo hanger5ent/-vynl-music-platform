@@ -74,10 +74,10 @@ export async function POST(req: NextRequest) {
       const updateData: Record<string, unknown> = {}
       
       if (invite.type === 'ARTIST' || invite.type === 'CREATOR') {
-        updateData.isArtist = true
-        
-        // Create artist profile if it doesn't exist
-        await tx.artistProfile.upsert({
+        updateData.isCreator = true
+
+        // Create creator profile if it doesn't exist
+        await tx.creatorProfile.upsert({
           where: { userId: session.user.id },
           update: {},
           create: {

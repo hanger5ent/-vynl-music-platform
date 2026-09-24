@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
 
 // Toggle like on a track
 export async function POST(
@@ -9,7 +10,7 @@ export async function POST(
 ) {
   try {
     const session = await getServerSession(authOptions)
-    
+
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -17,24 +18,37 @@ export async function POST(
     const trackId = params.id
     const userId = session.user.id
 
-    // Mock: Check if already liked
-    const isLiked = Math.random() > 0.5 // Random for demo
-    const newLikeState = !isLiked
-
-    // In production, toggle like in database
-    const result = {
-      id: `like_${Date.now()}`,
-      trackId,
-      userId,
-      liked: newLikeState,
-      createdAt: new Date()
+    const track = await prisma.track.findUnique({ where: { id: trackId }, select: { id: true } })
+    if (!track) {
+      return NextResponse.json({ error: 'Track not found' }, { status: 404 })
     }
+
+    const existing = await prisma.like.findUnique({
+      where: { userId_trackId: { userId, trackId } },
+    })
+
+    let liked: boolean
+    if (existing) {
+      await prisma.$transaction([
+        prisma.like.delete({ where: { id: existing.id } }),
+        prisma.track.update({ where: { id: trackId }, data: { likeCount: { decrement: 1 } } }),
+      ])
+      liked = false
+    } else {
+      await prisma.$transaction([
+        prisma.like.create({ data: { userId, trackId } }),
+        prisma.track.update({ where: { id: trackId }, data: { likeCount: { increment: 1 } } }),
+      ])
+      liked = true
+    }
+
+    const updated = await prisma.track.findUnique({ where: { id: trackId }, select: { likeCount: true } })
 
     return NextResponse.json({
       success: true,
-      liked: newLikeState,
-      likeCount: Math.floor(Math.random() * 1000) + 100,
-      message: newLikeState ? 'Track liked' : 'Track unliked'
+      liked,
+      likeCount: updated?.likeCount ?? 0,
+      message: liked ? 'Track liked' : 'Track unliked'
     })
 
   } catch (error) {
@@ -55,17 +69,23 @@ export async function GET(
     const session = await getServerSession(authOptions)
     const trackId = params.id
 
-    if (!session?.user) {
-      return NextResponse.json({ liked: false, likeCount: 0 })
+    const track = await prisma.track.findUnique({ where: { id: trackId }, select: { likeCount: true } })
+    if (!track) {
+      return NextResponse.json({ error: 'Track not found' }, { status: 404 })
     }
 
-    // Mock: Check if user liked this track
-    const liked = Math.random() > 0.5
-    const likeCount = Math.floor(Math.random() * 1000) + 100
+    if (!session?.user) {
+      return NextResponse.json({ liked: false, likeCount: track.likeCount })
+    }
+
+    const existing = await prisma.like.findUnique({
+      where: { userId_trackId: { userId: session.user.id, trackId } },
+      select: { id: true },
+    })
 
     return NextResponse.json({
-      liked,
-      likeCount
+      liked: !!existing,
+      likeCount: track.likeCount
     })
 
   } catch (error) {
