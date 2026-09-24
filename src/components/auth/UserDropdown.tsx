@@ -74,11 +74,7 @@ export function UserDropdown() {
             </Link>
           )}
 
-          {/* Admin Link - Check if user is admin */}
-          {(() => {
-            const adminEmails = process.env.NEXT_PUBLIC_ADMIN_EMAILS?.split(',') || []
-            return adminEmails.includes(session?.user?.email || '')
-          })() && (
+          {session.user.isAdmin && (
             <Link
               href="/admin"
               className="block px-4 py-2 text-sm text-red-600 hover:bg-red-50 font-medium"
