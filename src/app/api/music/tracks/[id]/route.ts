@@ -33,6 +33,14 @@ export async function GET(
       return NextResponse.json({ error: 'Track not found' }, { status: 404 })
     }
 
+    if (track.isTakenDown) {
+      const session = await getServerSession(authOptions)
+      const canView = session?.user?.id === track.ownerId || session?.user?.isAdmin
+      if (!canView) {
+        return NextResponse.json({ error: 'Track not found' }, { status: 404 })
+      }
+    }
+
     return NextResponse.json({ track })
 
   } catch (error) {

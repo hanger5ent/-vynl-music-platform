@@ -23,6 +23,10 @@ export const authOptions: NextAuthOptions = {
         const isValid = await bcrypt.compare(credentials.password, user.password)
         if (!isValid) return null
 
+        if (user.isSuspended) {
+          throw new Error('This account has been suspended.')
+        }
+
         return {
           id: user.id,
           email: user.email,

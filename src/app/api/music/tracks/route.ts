@@ -28,11 +28,13 @@ export async function GET(req: NextRequest) {
     // only its owner should see it in that state. Everyone else only ever
     // sees READY tracks.
     const isOwnerViewingOwnCatalog = ownerId && session?.user?.id === ownerId
+    const canSeeHiddenTracks = isOwnerViewingOwnCatalog || session?.user?.isAdmin
 
     const where: Prisma.TrackWhereInput = {
       ...(genre ? { genre: { equals: genre, mode: 'insensitive' } } : {}),
       ...(ownerId ? { ownerId } : {}),
       ...(isOwnerViewingOwnCatalog ? {} : { processingStatus: 'READY' }),
+      ...(canSeeHiddenTracks ? {} : { isTakenDown: false }),
       ...(search
         ? {
             OR: [

@@ -33,6 +33,7 @@ export async function GET(req: NextRequest) {
         ? prisma.track.findMany({
             where: {
               processingStatus: 'READY',
+              isTakenDown: false,
               OR: [
                 { title: { contains: q, mode: 'insensitive' } },
                 { genre: { contains: q, mode: 'insensitive' } },

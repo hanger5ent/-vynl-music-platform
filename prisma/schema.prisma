@@ -23,6 +23,9 @@ model User {
   isCreator     Boolean   @default(false)
   isVerified    Boolean   @default(false)
   isAdmin       Boolean   @default(false)
+  isSuspended     Boolean   @default(false)
+  suspendedAt     DateTime?
+  suspendedReason String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -150,6 +153,12 @@ model Track {
   rightsAttested    Boolean   @default(false)
   rightsAttestedAt  DateTime?
   royaltySplits     RoyaltySplit[]
+
+  // Admin moderation - hides the track from all public listings/playback
+  // when true, independent of processingStatus.
+  isTakenDown     Boolean   @default(false)
+  takedownReason  String?
+  takenDownAt     DateTime?
 
   // Ownership
   ownerId     String

@@ -42,7 +42,7 @@ export async function GET(
 
     const [recentTracks, albums, streamTotal, isFollowing] = await Promise.all([
       prisma.track.findMany({
-        where: { ownerId: artistId, processingStatus: 'READY' },
+        where: { ownerId: artistId, processingStatus: 'READY', isTakenDown: false },
         select: {
           id: true, title: true, slug: true, duration: true, audioUrl: true,
           genre: true, playCount: true, likeCount: true, price: true, isFree: true, createdAt: true,
@@ -56,7 +56,7 @@ export async function GET(
         orderBy: { createdAt: 'desc' },
       }),
       prisma.track.aggregate({
-        where: { ownerId: artistId, processingStatus: 'READY' },
+        where: { ownerId: artistId, processingStatus: 'READY', isTakenDown: false },
         _sum: { playCount: true },
       }),
       session?.user?.id

@@ -17,7 +17,7 @@ export async function POST(
     const { duration } = body
 
     const track = await prisma.track.findUnique({ where: { id: trackId } })
-    if (!track) {
+    if (!track || track.isTakenDown) {
       return NextResponse.json({ error: 'Track not found' }, { status: 404 })
     }
 
