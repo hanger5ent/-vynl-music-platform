@@ -1,15 +1,25 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { toast } from 'react-hot-toast'
 import { Card } from '@/components/ui/Card'
-import { CheckCircle, Upload, Link as LinkIcon } from 'lucide-react'
+import { CheckCircle, Clock, XCircle, Loader2 } from 'lucide-react'
+
+interface Application {
+  id: string
+  status: 'PENDING' | 'APPROVED' | 'REJECTED'
+  artistName: string
+  createdAt: string
+  reviewNote: string | null
+}
 
 export default function CreatorApplicationPage() {
-  const { data: session } = useSession()
+  const { data: session, status: sessionStatus } = useSession()
   const [isLoading, setIsLoading] = useState(false)
-  const [applicationSubmitted, setApplicationSubmitted] = useState(false)
+  const [checkingStatus, setCheckingStatus] = useState(true)
+  const [latestApplication, setLatestApplication] = useState<Application | null>(null)
+  const [justSubmitted, setJustSubmitted] = useState(false)
   const [formData, setFormData] = useState({
     artistName: '',
     genre: '',
@@ -18,7 +28,6 @@ export default function CreatorApplicationPage() {
       spotify: '',
       youtube: '',
       instagram: '',
-      twitter: '',
       website: '',
     },
     musicSamples: '',
@@ -28,6 +37,24 @@ export default function CreatorApplicationPage() {
     hasProfessionalRecordings: false,
     agreesToTerms: false,
   })
+
+  const fetchStatus = useCallback(async () => {
+    setCheckingStatus(true)
+    try {
+      const res = await fetch('/api/creator/applications')
+      if (res.ok) {
+        const data = await res.json()
+        setLatestApplication(data.applications?.[0] || null)
+      }
+    } finally {
+      setCheckingStatus(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (session?.user) fetchStatus()
+    else setCheckingStatus(false)
+  }, [session?.user, fetchStatus])
 
   const handleInputChange = (field: string, value: string | number | boolean) => {
     if (field.includes('.')) {
@@ -46,7 +73,7 @@ export default function CreatorApplicationPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     if (!formData.hasOriginalMusic || !formData.hasProfessionalRecordings || !formData.agreesToTerms) {
       toast.error('Please complete all required fields and agreements')
       return
@@ -55,22 +82,43 @@ export default function CreatorApplicationPage() {
     setIsLoading(true)
 
     try {
-      // Simulate API call - in a real app, this would save to database or send email
-      await new Promise(resolve => setTimeout(resolve, 2000))
-      
-      setApplicationSubmitted(true)
+      const res = await fetch('/api/creator/applications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          artistName: formData.artistName,
+          genre: formData.genre,
+          bio: formData.bio,
+          socialLinks: formData.socialLinks,
+          musicSamples: formData.musicSamples,
+          experienceLevel: formData.experienceLevel,
+          goals: formData.goals || undefined,
+          hasOriginalMusic: formData.hasOriginalMusic,
+          hasProfessionalRecordings: formData.hasProfessionalRecordings,
+        }),
+      })
+      const data = await res.json()
+
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to submit application')
+        return
+      }
+
+      setJustSubmitted(true)
       toast.success('Application submitted successfully!')
-      
-      // In a real app, you might:
-      // 1. Save to database
-      // 2. Send email to admin team
-      // 3. Add to review queue
-      
     } catch (error) {
       toast.error('Failed to submit application. Please try again.')
     } finally {
       setIsLoading(false)
     }
+  }
+
+  if (sessionStatus === 'loading' || checkingStatus) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+      </div>
+    )
   }
 
   if (!session) {
@@ -92,27 +140,37 @@ export default function CreatorApplicationPage() {
     )
   }
 
-  if (applicationSubmitted) {
+  if (session.user.isCreator) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <Card>
+          <div className="p-8 text-center max-w-md">
+            <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-6" />
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">You&apos;re already a creator!</h2>
+            <a
+              href="/creator"
+              className="inline-block bg-purple-600 text-white px-6 py-3 rounded-md hover:bg-purple-700"
+            >
+              Go to Creator Dashboard
+            </a>
+          </div>
+        </Card>
+      </div>
+    )
+  }
+
+  if (justSubmitted || latestApplication?.status === 'PENDING') {
     return (
       <div className="min-h-screen bg-gray-50 py-12">
         <div className="max-w-2xl mx-auto px-4">
           <Card>
             <div className="p-8 text-center">
-              <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-6" />
-              <h2 className="text-3xl font-bold text-gray-900 mb-4">Application Submitted!</h2>
+              <Clock className="w-16 h-16 text-purple-500 mx-auto mb-6" />
+              <h2 className="text-3xl font-bold text-gray-900 mb-4">Application Under Review</h2>
               <p className="text-gray-600 mb-6">
                 Thank you for your interest in becoming a Vynl creator. We&apos;ve received your application
-                and will review it within 5-7 business days.
+                and our team will review it soon. You&apos;ll receive an email with our decision.
               </p>
-              <div className="bg-blue-50 p-4 rounded-lg mb-6">
-                <h3 className="font-semibold text-blue-900 mb-2">What happens next?</h3>
-                <ul className="text-left text-blue-800 space-y-1">
-                  <li>• Our team will review your application and music samples</li>
-                  <li>• We&apos;ll check your social media presence and engagement</li>
-                  <li>• You&apos;ll receive an email with our decision</li>
-                  <li>• If approved, you&apos;ll get an invitation code to upgrade your account</li>
-                </ul>
-              </div>
               <div className="space-y-3">
                 <a
                   href="/dashboard"
@@ -144,6 +202,19 @@ export default function CreatorApplicationPage() {
             to be considered for creator access.
           </p>
         </div>
+
+        {latestApplication?.status === 'REJECTED' && (
+          <div className="mb-6 bg-orange-50 border border-orange-200 rounded-lg p-4 flex items-start gap-3">
+            <XCircle className="h-5 w-5 text-orange-500 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-orange-900">Your previous application wasn&apos;t approved</p>
+              {latestApplication.reviewNote && (
+                <p className="text-sm text-orange-800 mt-1">{latestApplication.reviewNote}</p>
+              )}
+              <p className="text-sm text-orange-700 mt-1">You&apos;re welcome to apply again below.</p>
+            </div>
+          </div>
+        )}
 
         <Card>
           <form onSubmit={handleSubmit} className="p-8 space-y-8">
@@ -194,6 +265,7 @@ export default function CreatorApplicationPage() {
                 <textarea
                   required
                   rows={4}
+                  maxLength={2000}
                   value={formData.bio}
                   onChange={(e) => handleInputChange('bio', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
@@ -268,6 +340,7 @@ export default function CreatorApplicationPage() {
                   <textarea
                     required
                     rows={3}
+                    maxLength={500}
                     value={formData.musicSamples}
                     onChange={(e) => handleInputChange('musicSamples', e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
@@ -295,6 +368,7 @@ export default function CreatorApplicationPage() {
                   </label>
                   <textarea
                     rows={3}
+                    maxLength={2000}
                     value={formData.goals}
                     onChange={(e) => handleInputChange('goals', e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
@@ -353,7 +427,7 @@ export default function CreatorApplicationPage() {
                 {isLoading ? 'Submitting Application...' : 'Submit Creator Application'}
               </button>
               <p className="mt-3 text-sm text-gray-500 text-center">
-                Applications are reviewed within 5-7 business days. You&apos;ll receive an email with our decision.
+                You&apos;ll receive an email once our team has reviewed your application.
               </p>
             </div>
           </form>
