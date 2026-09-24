@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { stripe, SUBSCRIPTION_TIERS, PLATFORM_FEE_PERCENT } from '@/lib/stripe'
+import { stripe, PLATFORM_FEE_PERCENT } from '@/lib/stripe'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { getCreatorTiers, TIER_KEYS, type TierKey } from '@/lib/tiers'
 
 export async function POST(req: NextRequest) {
   try {
@@ -20,11 +21,15 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const { artistId, tier, returnUrl } = body
 
-    if (!artistId || !tier || !SUBSCRIPTION_TIERS[tier as keyof typeof SUBSCRIPTION_TIERS]) {
+    if (!artistId || !tier || !TIER_KEYS.includes(tier as TierKey)) {
       return NextResponse.json({ error: 'Invalid parameters' }, { status: 400 })
     }
 
-    const tierConfig = SUBSCRIPTION_TIERS[tier as keyof typeof SUBSCRIPTION_TIERS]
+    const creatorTiers = await getCreatorTiers(artistId)
+    const tierConfig = creatorTiers.find((t) => t.id === tier)
+    if (!tierConfig || !tierConfig.isActive) {
+      return NextResponse.json({ error: 'This subscription tier is not available' }, { status: 400 })
+    }
 
     const creatorProfile = await prisma.creatorProfile.findUnique({ where: { userId: artistId } })
     if (!creatorProfile?.stripeAccountId || !creatorProfile.stripeChargesEnabled) {
@@ -59,11 +64,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Failed to create customer' }, { status: 500 })
     }
 
-    // Create or get price
+    // Create or get price. The lookup key is versioned by price-in-cents so
+    // that editing a tier's price (creator-set, can change any time) always
+    // resolves to a fresh Stripe Price rather than a stale cached one —
+    // Stripe prices are immutable once created.
+    const lookupKey = `${tier}_${artistId}_${tierConfig.price}`
     let price
     try {
       const prices = await stripe.prices.list({
-        lookup_keys: [`${tier}_${artistId}`],
+        lookup_keys: [lookupKey],
         limit: 1,
       })
 
@@ -85,10 +94,10 @@ export async function POST(req: NextRequest) {
           unit_amount: tierConfig.price,
           currency: 'usd',
           recurring: {
-            interval: tierConfig.interval,
+            interval: tierConfig.interval as 'month' | 'year',
           },
           product: product.id,
-          lookup_key: `${tier}_${artistId}`,
+          lookup_key: lookupKey,
           metadata: {
             artistId,
             tier,

@@ -2,18 +2,14 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { SUBSCRIPTION_TIERS, PLATFORM_FEE_PERCENT } from '@/lib/stripe'
-
-type TierKey = keyof typeof SUBSCRIPTION_TIERS
-const TIER_KEYS = Object.keys(SUBSCRIPTION_TIERS) as TierKey[]
+import { PLATFORM_FEE_PERCENT } from '@/lib/stripe'
+import { getCreatorTiers } from '@/lib/tiers'
 
 // Everything the creator dashboard's Overview/Subscriptions tabs need,
-// computed from real data: CreatorSubscription for tiers, RevenueLedger for
-// revenue. (The Subscribers tab has its own dedicated /api/creator/subscribers
-// endpoint.) Tiers themselves (name/price/features) are still the fixed
-// platform-wide three (see SUBSCRIPTION_TIERS) — creators can't yet define
-// custom tiers, so this reports on those three rather than pretending
-// per-creator tiers exist.
+// computed from real data: CreatorSubscription for subscriber counts,
+// CreatorTierConfig (via getCreatorTiers) for the creator's own tier
+// name/price/features/active-state, RevenueLedger for revenue. (The
+// Subscribers tab has its own dedicated /api/creator/subscribers endpoint.)
 export async function GET() {
   try {
     const session = await getServerSession(authOptions)
@@ -26,7 +22,8 @@ export async function GET() {
 
     const creatorId = session.user.id
 
-    const [subscriptions, trackCount, playCountAgg, revenueByType, totalRevenueAgg] = await Promise.all([
+    const [resolvedTiers, subscriptions, trackCount, playCountAgg, revenueByType, totalRevenueAgg] = await Promise.all([
+      getCreatorTiers(creatorId),
       prisma.creatorSubscription.findMany({
         where: { creatorId },
         select: { id: true, tier: true, status: true, amount: true },
@@ -45,15 +42,16 @@ export async function GET() {
     const cancelledSubs = subscriptions.filter((s) => s.status === 'CANCELLED')
     const monthlyRecurringRevenue = activeSubs.reduce((sum, s) => sum + Number(s.amount), 0)
 
-    const tiers = TIER_KEYS.map((key) => {
-      const config = SUBSCRIPTION_TIERS[key]
-      const tierActiveSubs = activeSubs.filter((s) => s.tier === key.toUpperCase())
+    const tiers = resolvedTiers.map((resolved) => {
+      const tierActiveSubs = activeSubs.filter((s) => s.tier === resolved.id.toUpperCase())
       return {
-        id: key,
-        name: config.name,
-        price: config.price / 100,
-        interval: config.interval,
-        features: config.features,
+        id: resolved.id,
+        name: resolved.name,
+        price: resolved.price / 100,
+        interval: resolved.interval,
+        features: resolved.features,
+        isActive: resolved.isActive,
+        isCustomized: resolved.isCustomized,
         subscriberCount: tierActiveSubs.length,
         monthlyRevenue: tierActiveSubs.reduce((sum, s) => sum + Number(s.amount), 0),
       }

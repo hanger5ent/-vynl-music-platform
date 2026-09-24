@@ -53,7 +53,8 @@ model User {
   emailLists        CreatorEmailList[]    @relation("CreatorEmailLists")
   emailCampaigns    EmailCampaign[]       @relation("CreatorCampaigns")
   emailDeliveries   EmailDelivery[]       @relation("EmailDeliveries")
-  
+  tierConfigs       CreatorTierConfig[]   @relation("CreatorTierConfigs")
+
   // Community
   forumPosts    ForumPost[]
   forumComments ForumComment[]
@@ -478,6 +479,25 @@ model CreatorSubscription {
 
   @@unique([subscriberId, creatorId])
   @@map("creator_subscriptions")
+}
+
+// Per-creator overrides of the platform's fixed subscription tiers
+// (name/price/features/active). A creator with no row for a given tier
+// uses the platform default from SUBSCRIPTION_TIERS.
+model CreatorTierConfig {
+  id        String           @id @default(cuid())
+  creatorId String
+  creator   User             @relation("CreatorTierConfigs", fields: [creatorId], references: [id], onDelete: Cascade)
+  tier      SubscriptionTier
+  name      String
+  price     Int // cents
+  features  String[]
+  isActive  Boolean          @default(true)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@unique([creatorId, tier])
+  @@map("creator_tier_configs")
 }
 
 // Creator Email Lists for newsletters/updates

@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react'
 import { MarketingHub } from '@/components/creator/MarketingHub'
 import { AnalyticsDashboard } from '@/components/creator/AnalyticsDashboard'
 import SubscriberManager from '@/components/creator/SubscriberManager'
+import EditTierModal from '@/components/creator/EditTierModal'
 import Link from 'next/link'
 import {
   Crown,
@@ -15,7 +16,8 @@ import {
   BarChart3,
   CheckCircle,
   Megaphone,
-  Loader2
+  Loader2,
+  Pencil
 } from 'lucide-react'
 
 interface SubscriptionTier {
@@ -24,6 +26,8 @@ interface SubscriptionTier {
   price: number
   interval: string
   features: string[]
+  isActive: boolean
+  isCustomized: boolean
   subscriberCount: number
   monthlyRevenue: number
 }
@@ -53,6 +57,7 @@ export default function CreatorDashboard() {
   const [activeTab, setActiveTab] = useState('overview')
   const [data, setData] = useState<DashboardData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [editingTier, setEditingTier] = useState<SubscriptionTier | null>(null)
 
   const fetchDashboard = useCallback(async () => {
     setIsLoading(true)
@@ -242,16 +247,31 @@ export default function CreatorDashboard() {
               <h2 className="text-2xl font-bold text-gray-900">Subscription Tiers</h2>
             </div>
             <p className="text-sm text-gray-500 -mt-4">
-              VYNL currently offers three fixed subscription tiers platform-wide. Per-creator custom tiers aren&apos;t available yet.
+              Customize the name, price, and perks for each tier. Fans only see tiers you&apos;ve turned on.
             </p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {tiers.map((tier) => (
-                <div key={tier.id} className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-purple-500">
+                <div
+                  key={tier.id}
+                  className={`bg-white rounded-xl shadow-sm p-6 border-l-4 ${tier.isActive ? 'border-purple-500' : 'border-gray-300 opacity-75'}`}
+                >
                   <div className="flex items-start justify-between mb-4">
                     <div>
                       <h3 className="text-lg font-semibold text-gray-900">{tier.name}</h3>
+                      {!tier.isActive && (
+                        <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                          Not offered to fans
+                        </span>
+                      )}
                     </div>
+                    <button
+                      onClick={() => setEditingTier(tier)}
+                      className="p-1.5 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                      aria-label={`Edit ${tier.name}`}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
                   </div>
 
                   <div className="space-y-4">
@@ -340,6 +360,14 @@ export default function CreatorDashboard() {
           </div>
         )}
         </>
+        )}
+
+        {editingTier && (
+          <EditTierModal
+            tier={editingTier}
+            onClose={() => setEditingTier(null)}
+            onSaved={fetchDashboard}
+          />
         )}
       </div>
     </div>
