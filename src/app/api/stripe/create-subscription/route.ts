@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { stripe, PLATFORM_FEE_PERCENT } from '@/lib/stripe'
+import { stripe } from '@/lib/stripe'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getCreatorTiers, TIER_KEYS, type TierKey } from '@/lib/tiers'
+import { getPlatformFeePercent } from '@/lib/settings'
 
 export async function POST(req: NextRequest) {
   try {
@@ -109,6 +110,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Failed to create price' }, { status: 500 })
     }
 
+    const platformFeePercent = await getPlatformFeePercent()
+
     // Create checkout session
     try {
       const checkoutSession = await stripe.checkout.sessions.create({
@@ -134,7 +137,7 @@ export async function POST(req: NextRequest) {
             tier,
             userId: session.user.id || '',
           },
-          application_fee_percent: PLATFORM_FEE_PERCENT,
+          application_fee_percent: platformFeePercent,
           transfer_data: {
             destination: creatorStripeAccountId,
           },

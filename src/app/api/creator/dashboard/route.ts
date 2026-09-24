@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { PLATFORM_FEE_PERCENT } from '@/lib/stripe'
 import { getCreatorTiers } from '@/lib/tiers'
+import { getPlatformFeePercent } from '@/lib/settings'
 
 // Everything the creator dashboard's Overview/Subscriptions tabs need,
 // computed from real data: CreatorSubscription for subscriber counts,
@@ -22,8 +22,9 @@ export async function GET() {
 
     const creatorId = session.user.id
 
-    const [resolvedTiers, subscriptions, trackCount, playCountAgg, revenueByType, totalRevenueAgg] = await Promise.all([
+    const [resolvedTiers, platformFeePercent, subscriptions, trackCount, playCountAgg, revenueByType, totalRevenueAgg] = await Promise.all([
       getCreatorTiers(creatorId),
+      getPlatformFeePercent(),
       prisma.creatorSubscription.findMany({
         where: { creatorId },
         select: { id: true, tier: true, status: true, amount: true },
@@ -58,7 +59,7 @@ export async function GET() {
     })
 
     const grossByType = new Map(revenueByType.map((r) => [r.type, Number(r._sum.amount || 0)]))
-    const netFactor = 1 - PLATFORM_FEE_PERCENT / 100
+    const netFactor = 1 - platformFeePercent / 100
     // Gross-earned breakdown by category (not adjusted for later refunds —
     // totalRevenue below is the refund-and-fee-accurate figure).
     const revenueBreakdown = {

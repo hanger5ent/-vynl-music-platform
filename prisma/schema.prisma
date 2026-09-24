@@ -59,6 +59,8 @@ model User {
   tierConfigs       CreatorTierConfig[]   @relation("CreatorTierConfigs")
   creatorApplications   CreatorApplication[] @relation("CreatorApplicant")
   reviewedApplications  CreatorApplication[] @relation("ApplicationReviewer")
+  adRequests            AdRequest[] @relation("AdRequestCreator")
+  reviewedAdRequests    AdRequest[] @relation("AdRequestReviewer")
 
   // Community
   forumPosts    ForumPost[]
@@ -548,6 +550,59 @@ model CreatorApplication {
   @@index([userId])
   @@index([status])
   @@map("creator_applications")
+}
+
+enum AdRequestType {
+  BANNER
+  SPONSORED_POST
+  VIDEO
+  AUDIO_SPOT
+}
+
+enum AdRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// A creator's request to run an ad on the platform, reviewed by an admin.
+// This is the request/approval workflow only - there's no ad-serving or
+// impression/click tracking anywhere in the app yet, so this model doesn't
+// pretend to track spend or performance.
+model AdRequest {
+  id                 String   @id @default(cuid())
+  creatorId          String
+  creator            User     @relation("AdRequestCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+
+  adType             AdRequestType
+  title              String
+  description        String
+  budget             Decimal  @db.Decimal(10, 2)
+  targetAudience     String
+  preferredStartDate DateTime
+
+  status             AdRequestStatus @default(PENDING)
+  reviewedBy         String?
+  reviewer           User?     @relation("AdRequestReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
+  reviewNote         String?
+  reviewedAt         DateTime?
+
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([creatorId])
+  @@index([status])
+  @@map("ad_requests")
+}
+
+// Singleton row (fixed id) holding admin-configurable platform settings.
+model PlatformSettings {
+  id                 String   @id @default("singleton")
+  platformFeePercent Int      @default(15)
+  updatedAt          DateTime @updatedAt
+  updatedBy          String?
+
+  @@map("platform_settings")
 }
 
 // Creator Email Lists for newsletters/updates

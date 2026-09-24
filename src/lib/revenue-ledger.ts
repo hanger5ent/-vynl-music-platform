@@ -1,5 +1,6 @@
 import type { Prisma, RevenueLedgerEntryType } from '@prisma/client'
-import { PLATFORM_FEE_PERCENT, splitGrossAmount } from '@/lib/stripe'
+import { splitGrossAmount } from '@/lib/stripe'
+import { getPlatformFeePercent } from '@/lib/settings'
 
 type TxClient = Prisma.TransactionClient
 
@@ -20,10 +21,13 @@ interface RecordEarningInput {
 // and rolls the net amount into CreatorProfile.totalRevenue (the cached
 // figure creator dashboards display). The two ledger rows are the durable
 // source of truth; totalRevenue is a denormalized read-optimization derived
-// from them.
+// from them. Uses the live admin-configurable platform fee (read inside the
+// same transaction) and stores it on the entry so later refunds reverse the
+// exact fee that applied at the time, even if the setting changes later.
 export async function recordCreatorEarning(tx: TxClient, input: RecordEarningInput) {
   const { creatorId, type, grossAmount, currency = 'usd', purchaseId, subscriptionId, orderId, stripePaymentIntentId, stripeTransferId, description } = input
-  const { platformFee, netAmount } = splitGrossAmount(grossAmount)
+  const platformFeePercent = await getPlatformFeePercent(tx)
+  const { platformFee, netAmount } = splitGrossAmount(grossAmount, platformFeePercent)
 
   await tx.revenueLedger.create({
     data: {
@@ -31,7 +35,7 @@ export async function recordCreatorEarning(tx: TxClient, input: RecordEarningInp
       type,
       amount: grossAmount,
       currency,
-      platformFeePercent: PLATFORM_FEE_PERCENT,
+      platformFeePercent,
       purchaseId,
       subscriptionId,
       orderId,
@@ -73,14 +77,19 @@ interface RecordRefundInput {
   orderId?: string
   stripePaymentIntentId?: string
   description?: string
+  // The platformFeePercent stored on the original earning entry, so the
+  // refund reverses the exact net amount credited even if the platform fee
+  // has changed since. Falls back to the current live fee if not given.
+  originalPlatformFeePercent?: number
 }
 
 // Reverses a prior earning: negative REFUND ledger entry, and the creator's
 // totalRevenue is brought back down by the net amount they'd been credited
 // (gross minus the platform fee, which Stripe also returns to the payer).
 export async function recordRefund(tx: TxClient, input: RecordRefundInput) {
-  const { creatorId, amount, currency = 'usd', purchaseId, subscriptionId, orderId, stripePaymentIntentId, description } = input
-  const { netAmount } = splitGrossAmount(amount)
+  const { creatorId, amount, currency = 'usd', purchaseId, subscriptionId, orderId, stripePaymentIntentId, description, originalPlatformFeePercent } = input
+  const platformFeePercent = originalPlatformFeePercent ?? await getPlatformFeePercent(tx)
+  const { netAmount } = splitGrossAmount(amount, platformFeePercent)
 
   await tx.revenueLedger.create({
     data: {

@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { stripe, PLATFORM_FEE_PERCENT } from '@/lib/stripe'
+import { stripe } from '@/lib/stripe'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { getPlatformFeePercent } from '@/lib/settings'
 
 export async function POST(req: NextRequest) {
   try {
@@ -156,6 +157,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const platformFeePercent = await getPlatformFeePercent()
+
     // Create checkout session
     try {
       const checkoutSession = await stripe.checkout.sessions.create({
@@ -174,7 +177,7 @@ export async function POST(req: NextRequest) {
         },
         ...(connectDestination && {
           payment_intent_data: {
-            application_fee_amount: Math.round(totalCents * (PLATFORM_FEE_PERCENT / 100)),
+            application_fee_amount: Math.round(totalCents * (platformFeePercent / 100)),
             transfer_data: {
               destination: connectDestination,
             },

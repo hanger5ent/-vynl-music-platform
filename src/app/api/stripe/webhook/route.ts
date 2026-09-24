@@ -352,6 +352,7 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
         purchaseId: purchase.id,
         stripePaymentIntentId: paymentIntentId,
         description: 'Refund issued',
+        originalPlatformFeePercent: earningEntry.platformFeePercent ? Number(earningEntry.platformFeePercent) : undefined,
       })
     })
     return
@@ -373,6 +374,7 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
         orderId: order.id,
         stripePaymentIntentId: paymentIntentId,
         description: 'Refund issued',
+        originalPlatformFeePercent: earningEntry.platformFeePercent ? Number(earningEntry.platformFeePercent) : undefined,
       })
     })
   }
