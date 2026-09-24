@@ -1,158 +1,77 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { MarketingHub } from '@/components/creator/MarketingHub'
 import { AnalyticsDashboard } from '@/components/creator/AnalyticsDashboard'
+import SubscriberManager from '@/components/creator/SubscriberManager'
 import Link from 'next/link'
-import { 
-  Crown, 
-  Users, 
-  DollarSign, 
-  TrendingUp, 
-  Eye, 
-  Music, 
-  Settings,
+import {
+  Crown,
+  Users,
+  DollarSign,
+  TrendingUp,
+  Music,
   BarChart3,
-  Plus,
-  Edit,
   CheckCircle,
-  Megaphone
+  Megaphone,
+  Loader2
 } from 'lucide-react'
 
 interface SubscriptionTier {
   id: string
   name: string
   price: number
-  interval: 'monthly' | 'yearly'
-  description: string
+  interval: string
   features: string[]
-  color: string
   subscriberCount: number
-  isActive: boolean
   monthlyRevenue: number
 }
 
-interface Subscriber {
-  id: string
-  name: string
-  email: string
-  tierName: string
-  tierColor: string
-  startDate: string
-  nextBilling: string
-  status: 'active' | 'cancelled' | 'expired'
-  totalPaid: number
+interface DashboardData {
+  overview: {
+    totalSubscribers: number
+    monthlyRecurringRevenue: number
+    totalRevenue: number
+    totalTracks: number
+    totalPlays: number
+  }
+  revenueBreakdown: {
+    subscriptions: number
+    trackSales: number
+    merchandise: number
+  }
+  tiers: SubscriptionTier[]
+  analytics: {
+    arpu: number
+    cancellationRate: number
+  }
 }
 
 export default function CreatorDashboard() {
   const { data: session } = useSession()
   const [activeTab, setActiveTab] = useState('overview')
-  const [subscriptionTiers, setSubscriptionTiers] = useState<SubscriptionTier[]>([])
-  const [subscribers, setSubscribers] = useState<Subscriber[]>([])
-  const [stats, setStats] = useState({
-    totalSubscribers: 0,
-    monthlyRecurringRevenue: 0,
-    totalRevenue: 0,
-    averageRevenuePerUser: 0,
-    churnRate: 0,
-    views: 254612,
-    activeListeners: 256
-  })
+  const [data, setData] = useState<DashboardData | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
 
-  useEffect(() => {
-    // Mock data - replace with real API calls
-    const mockTiers: SubscriptionTier[] = [
-      {
-        id: 'fan-tier',
-        name: 'Fan',
-        price: 4.99,
-        interval: 'monthly',
-        description: 'Support and get exclusive content',
-        features: ['Early access to new releases', 'Exclusive behind-the-scenes content', 'Fan-only Discord community'],
-        color: 'blue',
-        subscriberCount: 156,
-        isActive: true,
-        monthlyRevenue: 779.44
-      },
-      {
-        id: 'supporter-tier',
-        name: 'Supporter',
-        price: 9.99,
-        interval: 'monthly',
-        description: 'Enhanced support with extra perks',
-        features: ['All Fan benefits', 'Monthly virtual meet & greet', 'Personalized thank you messages', 'Demo tracks access'],
-        color: 'purple',
-        subscriberCount: 89,
-        isActive: true,
-        monthlyRevenue: 889.11
-      },
-      {
-        id: 'vip-tier',
-        name: 'VIP',
-        price: 19.99,
-        interval: 'monthly',
-        description: 'Ultimate fan experience',
-        features: ['All Supporter benefits', 'Private video calls', 'Custom requests', 'Merchandise discounts', 'Concert tickets priority'],
-        color: 'gold',
-        subscriberCount: 34,
-        isActive: true,
-        monthlyRevenue: 679.66
+  const fetchDashboard = useCallback(async () => {
+    setIsLoading(true)
+    try {
+      const res = await fetch('/api/creator/dashboard')
+      if (res.ok) {
+        setData(await res.json())
       }
-    ]
-
-    const mockSubscribers: Subscriber[] = [
-      {
-        id: 'sub-1',
-        name: 'Alex Johnson',
-        email: 'alex.johnson@example.com',
-        tierName: 'VIP',
-        tierColor: 'gold',
-        startDate: '2024-10-15',
-        nextBilling: '2025-01-15',
-        status: 'active',
-        totalPaid: 59.97
-      },
-      {
-        id: 'sub-2',
-        name: 'Sarah Miller',
-        email: 'sarah.miller@example.com',
-        tierName: 'Supporter',
-        tierColor: 'purple',
-        startDate: '2024-11-01',
-        nextBilling: '2025-01-01',
-        status: 'active',
-        totalPaid: 19.98
-      },
-      {
-        id: 'sub-3',
-        name: 'Mike Chen',
-        email: 'mike.chen@example.com',
-        tierName: 'Fan',
-        tierColor: 'blue',
-        startDate: '2024-12-01',
-        nextBilling: '2025-01-01',
-        status: 'active',
-        totalPaid: 4.99
-      }
-    ]
-
-    setSubscriptionTiers(mockTiers)
-    setSubscribers(mockSubscribers)
-    
-    const totalSubs = mockTiers.reduce((sum, tier) => sum + tier.subscriberCount, 0)
-    const totalMRR = mockTiers.reduce((sum, tier) => sum + tier.monthlyRevenue, 0)
-    
-    setStats({
-      totalSubscribers: totalSubs,
-      monthlyRecurringRevenue: totalMRR,
-      totalRevenue: 15847.32,
-      averageRevenuePerUser: totalMRR / totalSubs,
-      churnRate: 3.2,
-      views: 254612,
-      activeListeners: 256
-    })
+    } finally {
+      setIsLoading(false)
+    }
   }, [])
+
+  useEffect(() => { fetchDashboard() }, [fetchDashboard])
+
+  const overview = data?.overview
+  const revenueBreakdown = data?.revenueBreakdown
+  const tiers = data?.tiers || []
+  const analytics = data?.analytics
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50">
@@ -195,18 +114,22 @@ export default function CreatorDashboard() {
           </nav>
         </div>
 
+        {isLoading ? (
+          <div className="flex justify-center py-24 text-gray-400">
+            <Loader2 className="w-6 h-6 animate-spin" />
+          </div>
+        ) : (
+        <>
         {/* Overview Tab */}
-        {activeTab === 'overview' && (
+        {activeTab === 'overview' && overview && (
           <div className="space-y-8">
             {/* Stats Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {/* Total Subscribers */}
               <div className="bg-white rounded-xl shadow-sm p-6 border border-purple-100">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-gray-600">Total Subscribers</p>
-                    <p className="text-3xl font-bold text-purple-600">{stats.totalSubscribers}</p>
-                    <p className="text-xs text-green-600">+12% this month</p>
+                    <p className="text-sm font-medium text-gray-600">Subscribers</p>
+                    <p className="text-3xl font-bold text-purple-600">{overview.totalSubscribers}</p>
                   </div>
                   <div className="bg-purple-100 p-3 rounded-lg">
                     <Crown className="h-6 w-6 text-purple-600" />
@@ -214,13 +137,11 @@ export default function CreatorDashboard() {
                 </div>
               </div>
 
-              {/* Monthly Recurring Revenue */}
               <div className="bg-white rounded-xl shadow-sm p-6 border border-green-100">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-gray-600">Monthly Revenue</p>
-                    <p className="text-3xl font-bold text-green-600">${stats.monthlyRecurringRevenue.toFixed(0)}</p>
-                    <p className="text-xs text-green-600">+8% this month</p>
+                    <p className="text-3xl font-bold text-green-600">${overview.monthlyRecurringRevenue.toFixed(0)}</p>
                   </div>
                   <div className="bg-green-100 p-3 rounded-lg">
                     <DollarSign className="h-6 w-6 text-green-600" />
@@ -228,27 +149,23 @@ export default function CreatorDashboard() {
                 </div>
               </div>
 
-              {/* Views */}
               <div className="bg-white rounded-xl shadow-sm p-6 border border-blue-100">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-gray-600">Views</p>
-                    <p className="text-3xl font-bold text-blue-600">{stats.views.toLocaleString()}</p>
-                    <p className="text-xs text-blue-600">+15% this week</p>
+                    <p className="text-sm font-medium text-gray-600">Total Tracks</p>
+                    <p className="text-3xl font-bold text-blue-600">{overview.totalTracks}</p>
                   </div>
                   <div className="bg-blue-100 p-3 rounded-lg">
-                    <Eye className="h-6 w-6 text-blue-600" />
+                    <Music className="h-6 w-6 text-blue-600" />
                   </div>
                 </div>
               </div>
 
-              {/* Active Listeners */}
               <div className="bg-white rounded-xl shadow-sm p-6 border border-orange-100">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-gray-600">Active Listeners</p>
-                    <p className="text-3xl font-bold text-orange-600">{stats.activeListeners}</p>
-                    <p className="text-xs text-orange-600">+5% this week</p>
+                    <p className="text-sm font-medium text-gray-600">Total Plays</p>
+                    <p className="text-3xl font-bold text-orange-600">{overview.totalPlays.toLocaleString()}</p>
                   </div>
                   <div className="bg-orange-100 p-3 rounded-lg">
                     <Users className="h-6 w-6 text-orange-600" />
@@ -258,50 +175,55 @@ export default function CreatorDashboard() {
             </div>
 
             {/* Revenue Breakdown */}
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-6">Revenue Sources</h2>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-purple-600">${stats.monthlyRecurringRevenue.toFixed(0)}</div>
-                  <div className="text-sm text-gray-600">Subscriptions</div>
-                  <div className="text-xs text-gray-500">Monthly recurring</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-green-600">$1,240</div>
-                  <div className="text-sm text-gray-600">Track Sales</div>
-                  <div className="text-xs text-gray-500">One-time purchases</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-blue-600">$325</div>
-                  <div className="text-sm text-gray-600">Tips & Donations</div>
-                  <div className="text-xs text-gray-500">Fan support</div>
+            {revenueBreakdown && (
+              <div className="bg-white rounded-xl shadow-sm p-6">
+                <h2 className="text-xl font-semibold text-gray-900 mb-6">Revenue Sources</h2>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-purple-600">${revenueBreakdown.subscriptions.toFixed(0)}</div>
+                    <div className="text-sm text-gray-600">Subscriptions</div>
+                    <div className="text-xs text-gray-500">Net of platform fee</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-600">${revenueBreakdown.trackSales.toFixed(0)}</div>
+                    <div className="text-sm text-gray-600">Track &amp; Album Sales</div>
+                    <div className="text-xs text-gray-500">Net of platform fee</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-blue-600">${revenueBreakdown.merchandise.toFixed(0)}</div>
+                    <div className="text-sm text-gray-600">Merchandise</div>
+                    <div className="text-xs text-gray-500">Net of platform fee</div>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
             {/* Quick Actions */}
             <div className="bg-white rounded-xl shadow-sm p-6">
               <h2 className="text-xl font-semibold text-gray-900 mb-6">Quick Actions</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <button 
+                <button
                   onClick={() => setActiveTab('subscriptions')}
                   className="flex items-center gap-3 p-4 border-2 border-dashed border-purple-200 rounded-lg hover:border-purple-300 hover:bg-purple-50 transition-colors group"
                 >
                   <Crown className="h-5 w-5 text-purple-600" />
                   <span className="text-sm font-medium text-gray-700 group-hover:text-purple-700">Manage Tiers</span>
                 </button>
-                <button className="flex items-center gap-3 p-4 border-2 border-dashed border-green-200 rounded-lg hover:border-green-300 hover:bg-green-50 transition-colors group">
+                <Link
+                  href="/creator/studio"
+                  className="flex items-center gap-3 p-4 border-2 border-dashed border-green-200 rounded-lg hover:border-green-300 hover:bg-green-50 transition-colors group"
+                >
                   <Music className="h-5 w-5 text-green-600" />
                   <span className="text-sm font-medium text-gray-700 group-hover:text-green-700">Upload Track</span>
-                </button>
-                <button 
+                </Link>
+                <button
                   onClick={() => setActiveTab('subscribers')}
                   className="flex items-center gap-3 p-4 border-2 border-dashed border-blue-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-colors group"
                 >
                   <Users className="h-5 w-5 text-blue-600" />
                   <span className="text-sm font-medium text-gray-700 group-hover:text-blue-700">View Fans</span>
                 </button>
-                <button 
+                <button
                   onClick={() => setActiveTab('analytics')}
                   className="flex items-center gap-3 p-4 border-2 border-dashed border-orange-200 rounded-lg hover:border-orange-300 hover:bg-orange-50 transition-colors group"
                 >
@@ -318,25 +240,17 @@ export default function CreatorDashboard() {
           <div className="space-y-8">
             <div className="flex items-center justify-between">
               <h2 className="text-2xl font-bold text-gray-900">Subscription Tiers</h2>
-              <button className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
-                <Plus className="h-4 w-4" />
-                Create New Tier
-              </button>
             </div>
+            <p className="text-sm text-gray-500 -mt-4">
+              VYNL currently offers three fixed subscription tiers platform-wide. Per-creator custom tiers aren&apos;t available yet.
+            </p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {subscriptionTiers.map((tier) => (
+              {tiers.map((tier) => (
                 <div key={tier.id} className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-purple-500">
                   <div className="flex items-start justify-between mb-4">
                     <div>
                       <h3 className="text-lg font-semibold text-gray-900">{tier.name}</h3>
-                      <p className="text-sm text-gray-600">{tier.description}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button className="p-1 text-gray-400 hover:text-gray-600">
-                        <Edit className="h-4 w-4" />
-                      </button>
-                      <div className={`w-3 h-3 rounded-full ${tier.isActive ? 'bg-green-500' : 'bg-red-500'}`} />
                     </div>
                   </div>
 
@@ -360,15 +274,12 @@ export default function CreatorDashboard() {
                     <div className="space-y-2">
                       <p className="text-sm font-medium text-gray-700">Features:</p>
                       <ul className="space-y-1">
-                        {tier.features.slice(0, 3).map((feature, index) => (
+                        {tier.features.map((feature, index) => (
                           <li key={index} className="text-xs text-gray-600 flex items-center gap-1">
                             <CheckCircle className="h-3 w-3 text-green-500 flex-shrink-0" />
                             {feature}
                           </li>
                         ))}
-                        {tier.features.length > 3 && (
-                          <li className="text-xs text-gray-500">+{tier.features.length - 3} more</li>
-                        )}
                       </ul>
                     </div>
                   </div>
@@ -377,33 +288,33 @@ export default function CreatorDashboard() {
             </div>
 
             {/* Subscription Analytics */}
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Subscription Analytics</h3>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-gray-900">${stats.averageRevenuePerUser.toFixed(2)}</div>
-                  <div className="text-sm text-gray-600">ARPU</div>
-                  <div className="text-xs text-gray-500">Average Revenue Per User</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-red-600">{stats.churnRate}%</div>
-                  <div className="text-sm text-gray-600">Churn Rate</div>
-                  <div className="text-xs text-gray-500">Monthly cancellations</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-green-600">${stats.totalRevenue.toFixed(0)}</div>
-                  <div className="text-sm text-gray-600">Total Revenue</div>
-                  <div className="text-xs text-gray-500">All-time earnings</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-blue-600">97%</div>
-                  <div className="text-sm text-gray-600">Retention</div>
-                  <div className="text-xs text-gray-500">3-month retention rate</div>
+            {overview && analytics && (
+              <div className="bg-white rounded-xl shadow-sm p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Subscription Analytics</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-gray-900">${analytics.arpu.toFixed(2)}</div>
+                    <div className="text-sm text-gray-600">ARPU</div>
+                    <div className="text-xs text-gray-500">Average Revenue Per User</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-red-600">{analytics.cancellationRate}%</div>
+                    <div className="text-sm text-gray-600">Cancellation Rate</div>
+                    <div className="text-xs text-gray-500">Of all-time subscribers</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-600">${overview.totalRevenue.toFixed(0)}</div>
+                    <div className="text-sm text-gray-600">Total Revenue</div>
+                    <div className="text-xs text-gray-500">All-time earnings</div>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
         )}
+
+        {/* Subscribers Tab */}
+        {activeTab === 'subscribers' && <SubscriberManager />}
 
         {/* Marketing Tab */}
         {activeTab === 'marketing' && <MarketingHub />}
@@ -411,24 +322,24 @@ export default function CreatorDashboard() {
         {/* Analytics Tab */}
         {activeTab === 'analytics' && <AnalyticsDashboard userId={session?.user?.id} />}
 
-        {/* Other tabs placeholder */}
-        {(activeTab === 'content' || activeTab === 'subscribers') && (
+        {/* Content Tab */}
+        {activeTab === 'content' && (
           <div className="bg-white rounded-xl shadow-sm p-12 text-center">
             <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              {activeTab === 'subscribers' ? <Users className="h-8 w-8 text-gray-400" /> :
-               <Music className="h-8 w-8 text-gray-400" />}
+              <Music className="h-8 w-8 text-gray-400" />
             </div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
-              {activeTab === 'subscribers' ? 'Subscriber Management' :
-               'Content Management'}
-            </h3>
-            <p className="text-gray-600">
-              {activeTab === 'subscribers'
-                ? 'Manage your subscribers and communication tools.'
-                : 'Upload and manage your music content here.'
-              }
-            </p>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">Content Management</h3>
+            <p className="text-gray-600 mb-4">Upload and manage your music content in the studio.</p>
+            <Link
+              href="/creator/studio"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+            >
+              <Music className="h-4 w-4" />
+              Go to Studio
+            </Link>
           </div>
+        )}
+        </>
         )}
       </div>
     </div>
