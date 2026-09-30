@@ -86,7 +86,9 @@ model User {
   // Shop
   products       Product[] @relation("ProductSeller")
   orders         Order[]   @relation("OrderCustomer")
-  
+  books          Book[]         @relation("BookOwner")
+  bookPurchases  BookPurchase[] @relation("BookPurchaseBuyer")
+
   @@map("users")
 }
 
@@ -448,6 +450,7 @@ enum RevenueLedgerEntryType {
   TRACK_PURCHASE
   ALBUM_PURCHASE
   PRODUCT_PURCHASE
+  BOOK_PURCHASE
   PLATFORM_FEE
   PAYOUT
   REFUND
@@ -905,6 +908,88 @@ model OrderItem {
   price     Decimal  @db.Decimal(10, 2)
   
   @@map("order_items")
+}
+
+enum BookFormat {
+  EBOOK
+  AUDIOBOOK
+}
+
+// Digital books (ebook or audiobook) a creator sells. Physical books use
+// the existing Product/Order shop system instead - this model is only for
+// the two formats that need their own delivery mechanism (a download link
+// for ebooks, streamed chapters via Mux for audiobooks).
+model Book {
+  id          String     @id @default(cuid())
+  title       String
+  slug        String     @unique
+  description String
+  author      String
+  // Audiobook only
+  narrator    String?
+  coverImage  String?
+  format      BookFormat
+  genre       String?
+  price       Decimal    @db.Decimal(10, 2)
+  isFree      Boolean    @default(false)
+
+  ownerId     String
+  owner       User       @relation("BookOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  // Ebook only - a creator-provided direct download URL, not a file we
+  // host ourselves (no generic object storage is configured for this app;
+  // Mux only handles audio).
+  fileUrl     String?
+  fileFormat  String? // 'pdf' | 'epub'
+
+  chapters    AudiobookChapter[]
+  purchases   BookPurchase[]
+
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([ownerId])
+  @@index([format])
+  @@map("books")
+}
+
+// Audiobook chapters, uploaded and transcoded the same way Track uses Mux.
+model AudiobookChapter {
+  id               String                @id @default(cuid())
+  bookId           String
+  book             Book                  @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  title            String
+  chapterNumber    Int
+  duration         Int                   @default(0)
+  audioUrl         String?
+  muxUploadId      String?               @unique
+  muxAssetId       String?               @unique
+  muxPlaybackId    String?
+  processingStatus TrackProcessingStatus @default(READY)
+  processingError  String?
+  createdAt        DateTime              @default(now())
+
+  @@unique([bookId, chapterNumber])
+  @@map("audiobook_chapters")
+}
+
+// Grants a buyer access to a digital book (ebook download link, or
+// audiobook chapter streaming).
+model BookPurchase {
+  id                    String         @id @default(cuid())
+  bookId                String
+  book                  Book           @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  buyerId               String
+  buyer                 User           @relation("BookPurchaseBuyer", fields: [buyerId], references: [id], onDelete: Cascade)
+  price                 Decimal        @db.Decimal(10, 2)
+  status                PurchaseStatus @default(PENDING)
+  stripeSessionId       String?
+  stripePaymentIntentId String?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  @@unique([bookId, buyerId])
+  @@map("book_purchases")
 }
 
 // Invite system

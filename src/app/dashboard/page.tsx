@@ -4,7 +4,7 @@ import { useSession } from 'next-auth/react'
 import { useState } from 'react'
 import Link from 'next/link'
 import { UseInviteForm } from '@/components/auth/UseInviteForm'
-import { Music, Heart, ShoppingCart, Users, TrendingUp, Star } from 'lucide-react'
+import { Music, Heart, ShoppingCart, Users, TrendingUp, Star, BookOpen } from 'lucide-react'
 
 export default function DashboardPage() {
   const { data: session } = useSession()
@@ -103,6 +103,12 @@ export default function DashboardPage() {
                 >
                   Upload a Track
                 </Link>
+                <Link
+                  href="/creator/books"
+                  className="inline-block border border-white text-white px-4 py-2 rounded-md hover:bg-white/10 transition-colors"
+                >
+                  Manage Books
+                </Link>
               </div>
             </div>
           </div>
@@ -174,6 +180,23 @@ export default function DashboardPage() {
               className="inline-block bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700 transition-colors"
             >
               View Purchases
+            </Link>
+          </div>
+
+          {/* Books */}
+          <div className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
+            <div className="flex items-center mb-4">
+              <BookOpen className="w-8 h-8 text-teal-600 mr-3" />
+              <h2 className="text-xl font-semibold text-gray-900">Books</h2>
+            </div>
+            <p className="text-gray-600 mb-4">
+              Browse ebooks and audiobooks from creators.
+            </p>
+            <Link
+              href="/books"
+              className="inline-block bg-teal-600 text-white px-4 py-2 rounded-md hover:bg-teal-700 transition-colors"
+            >
+              Browse Books
             </Link>
           </div>
 

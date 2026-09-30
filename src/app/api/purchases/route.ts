@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma'
 
 interface PurchaseEntry {
   id: string
-  type: 'track' | 'album' | 'merchandise'
+  type: 'track' | 'album' | 'merchandise' | 'book'
   title: string
   artist: string
   price: number
@@ -13,10 +13,11 @@ interface PurchaseEntry {
   status: string
   trackCount?: number
   audioUrl?: string | null
+  bookId?: string
 }
 
-// The signed-in user's full purchase history — tracks/albums (Purchase) and
-// shop orders (Order), merged into one list.
+// The signed-in user's full purchase history — tracks/albums (Purchase),
+// shop orders (Order), and books (BookPurchase), merged into one list.
 export async function GET() {
   try {
     const session = await getServerSession(authOptions)
@@ -24,7 +25,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const [purchases, orders] = await Promise.all([
+    const [purchases, orders, bookPurchases] = await Promise.all([
       prisma.purchase.findMany({
         where: { userId: session.user.id },
         orderBy: { createdAt: 'desc' },
@@ -45,6 +46,11 @@ export async function GET() {
         include: {
           items: { include: { product: { select: { name: true, seller: { select: { name: true, username: true } } } } } },
         },
+      }),
+      prisma.bookPurchase.findMany({
+        where: { buyerId: session.user.id, status: 'COMPLETED' },
+        orderBy: { createdAt: 'desc' },
+        include: { book: { select: { title: true, owner: { select: { name: true, username: true } } } } },
       }),
     ])
 
@@ -87,7 +93,18 @@ export async function GET() {
       status: order.orderStatus,
     }))
 
-    const all = [...musicEntries, ...merchEntries].sort(
+    const bookEntries: PurchaseEntry[] = bookPurchases.map((p) => ({
+      id: p.id,
+      type: 'book' as const,
+      title: p.book.title,
+      artist: p.book.owner.name || p.book.owner.username,
+      price: Number(p.price),
+      purchaseDate: p.createdAt.toISOString(),
+      status: p.status,
+      bookId: p.bookId,
+    }))
+
+    const all = [...musicEntries, ...merchEntries, ...bookEntries].sort(
       (a, b) => new Date(b.purchaseDate).getTime() - new Date(a.purchaseDate).getTime()
     )
 

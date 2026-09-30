@@ -42,6 +42,9 @@ export function Header() {
             <Link href="/community" className="text-gray-700 hover:text-purple-600 transition-colors font-medium">
               Community
             </Link>
+            <Link href="/books" className="text-gray-700 hover:text-purple-600 transition-colors font-medium">
+              Books
+            </Link>
           </nav>
 
           {/* Desktop Auth Section */}
@@ -136,14 +139,21 @@ export function Header() {
               >
                 Artists
               </Link>
-              <Link 
-                href="/community" 
+              <Link
+                href="/community"
                 className="text-gray-700 hover:text-purple-600 transition-colors font-medium px-2"
                 onClick={() => setIsMobileMenuOpen(false)}
               >
                 Community
               </Link>
-              
+              <Link
+                href="/books"
+                className="text-gray-700 hover:text-purple-600 transition-colors font-medium px-2"
+                onClick={() => setIsMobileMenuOpen(false)}
+              >
+                Books
+              </Link>
+
               {status === 'loading' ? (
                 <div className="w-8 h-8 bg-gray-200 rounded-full animate-pulse mx-2"></div>
               ) : session?.user ? (

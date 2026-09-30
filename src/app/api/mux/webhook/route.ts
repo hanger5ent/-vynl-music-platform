@@ -3,19 +3,21 @@ import { mux, MUX_WEBHOOK_SECRET, muxAudioRenditionUrl } from '@/lib/mux'
 import { prisma } from '@/lib/prisma'
 import type { UnwrapWebhookEvent } from '@mux/mux-node/resources/webhooks/webhooks'
 
+// Mux assets back both Track and AudiobookChapter audio, each with their
+// own muxUploadId/muxAssetId columns, so every handler below has to check
+// both tables rather than assuming it's always a Track.
+
 async function markErrored(where: { muxUploadId: string } | { muxAssetId: string }, message: string) {
-  await prisma.track.updateMany({
-    where,
-    data: { processingStatus: 'ERRORED', processingError: message.slice(0, 500) },
-  })
+  const data = { processingStatus: 'ERRORED' as const, processingError: message.slice(0, 500) }
+  await prisma.track.updateMany({ where, data })
+  await prisma.audiobookChapter.updateMany({ where, data })
 }
 
 async function handleUploadAssetCreated(data: Extract<UnwrapWebhookEvent, { type: 'video.upload.asset_created' }>['data']) {
   if (!data.asset_id) return
-  await prisma.track.updateMany({
-    where: { muxUploadId: data.id },
-    data: { muxAssetId: data.asset_id },
-  })
+  const where = { muxUploadId: data.id }
+  await prisma.track.updateMany({ where, data: { muxAssetId: data.asset_id } })
+  await prisma.audiobookChapter.updateMany({ where, data: { muxAssetId: data.asset_id } })
 }
 
 async function handleUploadErrored(_data: Extract<UnwrapWebhookEvent, { type: 'video.upload.errored' }>['data']) {
@@ -24,23 +26,29 @@ async function handleUploadErrored(_data: Extract<UnwrapWebhookEvent, { type: 'v
 
 async function handleAssetReady(data: Extract<UnwrapWebhookEvent, { type: 'video.asset.ready' }>['data']) {
   const playbackId = data.playback_ids?.[0]?.id
+  const duration = data.duration ? Math.round(data.duration) : undefined
+
   const track = await prisma.track.findUnique({ where: { muxAssetId: data.id } })
-  if (!track) {
-    console.error(`video.asset.ready for unknown Mux asset ${data.id}`)
+  if (track) {
+    await prisma.track.update({
+      where: { id: track.id },
+      data: { muxPlaybackId: playbackId, duration: duration ?? track.duration },
+    })
     return
   }
 
-  await prisma.track.update({
-    where: { id: track.id },
-    data: {
-      muxPlaybackId: playbackId,
-      // Mux's own transcoded duration is authoritative over the best-effort
-      // one music-metadata read from the raw upload before transcoding.
-      duration: data.duration ? Math.round(data.duration) : track.duration,
-    },
-  })
-  // Not READY yet — waiting on video.asset.static_renditions.ready for a
-  // plain file URL a bare <audio> tag can actually play.
+  const chapter = await prisma.audiobookChapter.findUnique({ where: { muxAssetId: data.id } })
+  if (chapter) {
+    await prisma.audiobookChapter.update({
+      where: { id: chapter.id },
+      data: { muxPlaybackId: playbackId, duration: duration ?? chapter.duration },
+    })
+    return
+  }
+
+  console.error(`video.asset.ready for unknown Mux asset ${data.id}`)
+  // Not READY yet either way — waiting on video.asset.static_renditions.ready
+  // for a plain file URL a bare <audio> tag can actually play.
 }
 
 async function handleAssetErrored(data: Extract<UnwrapWebhookEvent, { type: 'video.asset.errored' }>['data']) {
@@ -49,12 +57,14 @@ async function handleAssetErrored(data: Extract<UnwrapWebhookEvent, { type: 'vid
 
 async function handleStaticRenditionsReady(data: Extract<UnwrapWebhookEvent, { type: 'video.asset.static_renditions.ready' }>['data']) {
   const track = await prisma.track.findUnique({ where: { muxAssetId: data.id } })
-  if (!track) {
+  const chapter = track ? null : await prisma.audiobookChapter.findUnique({ where: { muxAssetId: data.id } })
+  const record = track || chapter
+  if (!record) {
     console.error(`video.asset.static_renditions.ready for unknown Mux asset ${data.id}`)
     return
   }
 
-  const playbackId = track.muxPlaybackId || data.playback_ids?.[0]?.id
+  const playbackId = record.muxPlaybackId || data.playback_ids?.[0]?.id
   const audioFile = data.static_renditions?.files?.find((f) => f.name === 'audio.m4a')
 
   if (!playbackId || !audioFile || audioFile.status !== 'ready') {
@@ -62,14 +72,17 @@ async function handleStaticRenditionsReady(data: Extract<UnwrapWebhookEvent, { t
     return
   }
 
-  await prisma.track.update({
-    where: { id: track.id },
-    data: {
-      audioUrl: muxAudioRenditionUrl(playbackId),
-      muxPlaybackId: playbackId,
-      processingStatus: 'READY',
-    },
-  })
+  const updateData = {
+    audioUrl: muxAudioRenditionUrl(playbackId),
+    muxPlaybackId: playbackId,
+    processingStatus: 'READY' as const,
+  }
+
+  if (track) {
+    await prisma.track.update({ where: { id: track.id }, data: updateData })
+  } else if (chapter) {
+    await prisma.audiobookChapter.update({ where: { id: chapter.id }, data: updateData })
+  }
 }
 
 async function handleStaticRenditionsErrored(data: Extract<UnwrapWebhookEvent, { type: 'video.asset.static_renditions.errored' }>['data']) {

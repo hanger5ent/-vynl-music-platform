@@ -102,10 +102,11 @@ export async function POST(req: NextRequest) {
     // Prepare line items
     const lineItems = []
     let totalCents = 0
+    const allItemsDigital = items.every((item) => item.kind === 'track' || item.kind === 'album' || item.kind === 'book')
 
     for (const item of items) {
       const { productId, quantity = 1, name, price, description, artistId, kind } = item
-      const itemKind = kind === 'track' || kind === 'album' ? kind : 'product'
+      const itemKind = kind === 'track' || kind === 'album' || kind === 'book' ? kind : 'product'
       totalCents += Math.round(price * 100) * quantity
 
       // Create or get price for this product
@@ -172,9 +173,11 @@ export async function POST(req: NextRequest) {
           userId: session.user.id || '',
           itemCount: items.length.toString(),
         },
-        shipping_address_collection: {
-          allowed_countries: ['US', 'CA', 'GB', 'AU', 'DE', 'FR'], // Add more as needed
-        },
+        ...(!allItemsDigital && {
+          shipping_address_collection: {
+            allowed_countries: ['US', 'CA', 'GB', 'AU', 'DE', 'FR'], // Add more as needed
+          },
+        }),
         ...(connectDestination && {
           payment_intent_data: {
             application_fee_amount: Math.round(totalCents * (platformFeePercent / 100)),
