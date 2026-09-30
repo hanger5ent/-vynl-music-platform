@@ -198,6 +198,54 @@ async function recordTrackOrAlbumPurchase(opts: {
   })
 }
 
+async function recordBookPurchase(opts: {
+  refId: string
+  userId: string
+  amount: number
+  sessionId: string
+  paymentIntentId?: string
+}) {
+  const { refId, userId, amount, sessionId, paymentIntentId } = opts
+
+  const book = await prisma.book.findUnique({ where: { id: refId }, select: { ownerId: true, title: true } })
+  if (!book) {
+    console.error(`book ${refId} referenced by checkout session ${sessionId} was not found`)
+    return
+  }
+
+  await prisma.$transaction(async (tx) => {
+    if (paymentIntentId) {
+      const alreadyRecorded = await hasLedgerEntryForPaymentIntent(tx, paymentIntentId, 'BOOK_PURCHASE')
+      if (alreadyRecorded) return
+    }
+
+    await tx.bookPurchase.upsert({
+      where: { bookId_buyerId: { bookId: refId, buyerId: userId } },
+      update: {
+        status: 'COMPLETED',
+        stripeSessionId: sessionId,
+        stripePaymentIntentId: paymentIntentId,
+      },
+      create: {
+        bookId: refId,
+        buyerId: userId,
+        price: amount,
+        status: 'COMPLETED',
+        stripeSessionId: sessionId,
+        stripePaymentIntentId: paymentIntentId,
+      },
+    })
+
+    await recordCreatorEarning(tx, {
+      creatorId: book.ownerId,
+      type: 'BOOK_PURCHASE',
+      grossAmount: amount,
+      stripePaymentIntentId: paymentIntentId,
+      description: `Book purchase: ${book.title}`,
+    })
+  })
+}
+
 interface ProductLineItem {
   refId: string
   quantity: number
@@ -300,6 +348,8 @@ async function handlePaymentCheckoutCompleted(session: Stripe.Checkout.Session) 
 
     if (kind === 'track' || kind === 'album') {
       await recordTrackOrAlbumPurchase({ kind, refId, userId, amount, sessionId: session.id, paymentIntentId })
+    } else if (kind === 'book') {
+      await recordBookPurchase({ refId, userId, amount, sessionId: session.id, paymentIntentId })
     } else {
       productItems.push({ refId, quantity, unitAmount: amount / quantity, totalAmount: amount })
     }
@@ -350,6 +400,29 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
         creatorId: earningEntry.creatorId,
         amount: refundAmount,
         purchaseId: purchase.id,
+        stripePaymentIntentId: paymentIntentId,
+        description: 'Refund issued',
+        originalPlatformFeePercent: earningEntry.platformFeePercent ? Number(earningEntry.platformFeePercent) : undefined,
+      })
+    })
+    return
+  }
+
+  const bookPurchase = await prisma.bookPurchase.findFirst({ where: { stripePaymentIntentId: paymentIntentId } })
+  if (bookPurchase) {
+    if (bookPurchase.status === 'REFUNDED') return
+    // BookPurchase has no dedicated ledger FK column, so the matching
+    // earning entry is looked up by payment intent + type instead.
+    const earningEntry = await prisma.revenueLedger.findFirst({
+      where: { stripePaymentIntentId: paymentIntentId, type: 'BOOK_PURCHASE' },
+    })
+    if (!earningEntry) return
+
+    await prisma.$transaction(async (tx) => {
+      await tx.bookPurchase.update({ where: { id: bookPurchase.id }, data: { status: 'REFUNDED' } })
+      await recordRefund(tx, {
+        creatorId: earningEntry.creatorId,
+        amount: refundAmount,
         stripePaymentIntentId: paymentIntentId,
         description: 'Refund issued',
         originalPlatformFeePercent: earningEntry.platformFeePercent ? Number(earningEntry.platformFeePercent) : undefined,

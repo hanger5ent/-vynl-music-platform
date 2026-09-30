@@ -3,11 +3,11 @@
 import { useSession } from 'next-auth/react'
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { ShoppingBag, Download, Search, CreditCard, Loader2 } from 'lucide-react'
+import { ShoppingBag, Download, Search, CreditCard, Loader2, BookOpen } from 'lucide-react'
 
 interface PurchaseEntry {
   id: string
-  type: 'track' | 'album' | 'merchandise'
+  type: 'track' | 'album' | 'merchandise' | 'book'
   title: string
   artist: string
   price: number
@@ -15,6 +15,7 @@ interface PurchaseEntry {
   status: string
   trackCount?: number
   audioUrl?: string | null
+  bookId?: string
 }
 
 function getStatusBadge(status: string) {
@@ -76,12 +77,14 @@ export default function PurchasesPage() {
   const tabs = [
     { id: 'all', label: 'All Purchases', count: purchases.length },
     { id: 'music', label: 'Music', count: purchases.filter((p) => ['track', 'album'].includes(p.type)).length },
+    { id: 'books', label: 'Books', count: purchases.filter((p) => p.type === 'book').length },
     { id: 'merchandise', label: 'Merchandise', count: purchases.filter((p) => p.type === 'merchandise').length },
   ]
 
   const filteredPurchases = purchases.filter((purchase) => {
     const matchesTab = activeTab === 'all' ||
       (activeTab === 'music' && ['track', 'album'].includes(purchase.type)) ||
+      (activeTab === 'books' && purchase.type === 'book') ||
       (activeTab === 'merchandise' && purchase.type === 'merchandise')
 
     const matchesSearch = searchQuery === '' ||
@@ -206,6 +209,15 @@ export default function PurchasesPage() {
                           <Download className="h-4 w-4" />
                           Download
                         </a>
+                      )}
+                      {purchase.type === 'book' && purchase.bookId && purchase.status === 'COMPLETED' && (
+                        <Link
+                          href={`/books/${purchase.bookId}`}
+                          className="flex items-center gap-2 px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm"
+                        >
+                          <BookOpen className="h-4 w-4" />
+                          View Book
+                        </Link>
                       )}
                     </div>
                   </div>
